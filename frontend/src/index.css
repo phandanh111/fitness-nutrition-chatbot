@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .chat-bubble {
+    @apply max-w-xs lg:max-w-md px-4 py-2 rounded-2xl;
+  }
+
+  .chat-bubble-user {
+    @apply bg-primary-500 text-white ml-auto;
+  }
+
+  .chat-bubble-bot {
+    @apply bg-gray-100 text-gray-800 mr-auto;
+  }
+
+  .nutrition-card {
+    @apply bg-gradient-to-r from-fitness-50 to-primary-50 border border-fitness-200 rounded-xl p-4 shadow-sm;
+  }
+
+  .macro-bar {
+    @apply w-full bg-gray-200 rounded-full h-2;
+  }
+
+  .macro-fill {
+    @apply h-2 rounded-full transition-all duration-500;
+  }
+
+  .macro-protein {
+    @apply bg-red-500;
+  }
+
+  .macro-carb {
+    @apply bg-blue-500;
+  }
+
+  .macro-fat {
+    @apply bg-yellow-500;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
