@@ -18,15 +18,15 @@
   }
 
   .chat-bubble-bot {
-    @apply bg-gray-100 text-gray-800 mr-auto;
+    @apply bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 mr-auto;
   }
 
   .nutrition-card {
-    @apply bg-gradient-to-r from-fitness-50 to-primary-50 border border-fitness-200 rounded-xl p-4 shadow-sm;
+    @apply bg-gradient-to-r from-fitness-50 to-primary-50 dark:from-gray-800 dark:to-gray-800 border border-fitness-200 dark:border-gray-700 rounded-xl p-4 shadow-sm;
   }
 
   .macro-bar {
-    @apply w-full bg-gray-200 rounded-full h-2;
+    @apply w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2;
   }
 
   .macro-fill {
