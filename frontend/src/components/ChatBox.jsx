@@ -105,8 +105,8 @@ const ChatBox = () => {
     return (
       <div className="nutrition-card mt-4">
         <div className="flex items-center gap-2 mb-3">
-          <Activity className="w-5 h-5 text-fitness-600" />
-          <h3 className="font-semibold text-gray-800">
+          <Activity className="w-5 h-5 text-fitness-600 dark:text-fitness-400" />
+          <h3 className="font-semibold text-gray-800 dark:text-white">
             Thông tin dinh dưỡng của bạn
           </h3>
         </div>
@@ -114,27 +114,31 @@ const ChatBox = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Calo mục tiêu:</span>
-              <span className="font-semibold text-fitness-600">
+              <span className="text-gray-600 dark:text-gray-400">
+                Calo mục tiêu:
+              </span>
+              <span className="font-semibold text-fitness-600 dark:text-fitness-400">
                 {goal_calories} kcal
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">TDEE:</span>
-              <span className="text-gray-800">{tdee} kcal</span>
+              <span className="text-gray-600 dark:text-gray-400">TDEE:</span>
+              <span className="text-gray-800 dark:text-gray-200">
+                {tdee} kcal
+              </span>
             </div>
           </div>
 
           <div className="space-y-2">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
               Mục tiêu:{" "}
-              <span className="font-semibold text-fitness-600">
+              <span className="font-semibold text-fitness-600 dark:text-fitness-400">
                 {user_info.goal}
               </span>
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
               Tập luyện:{" "}
-              <span className="font-semibold">
+              <span className="font-semibold text-gray-800 dark:text-gray-200">
                 {user_info.workout_days_per_week} buổi/tuần
               </span>
             </div>
@@ -142,13 +146,17 @@ const ChatBox = () => {
         </div>
 
         <div className="space-y-3">
-          <h4 className="font-medium text-gray-800">Macronutrients:</h4>
+          <h4 className="font-medium text-gray-800 dark:text-white">
+            Macronutrients:
+          </h4>
 
           {/* Protein */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-red-600 font-medium">Protein</span>
-              <span>
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                Protein
+              </span>
+              <span className="text-gray-800 dark:text-gray-200">
                 {macros.protein.grams}g ({macros.protein.percentage}%)
               </span>
             </div>
@@ -163,8 +171,10 @@ const ChatBox = () => {
           {/* Carb */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-blue-600 font-medium">Carbohydrate</span>
-              <span>
+              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                Carbohydrate
+              </span>
+              <span className="text-gray-800 dark:text-gray-200">
                 {macros.carb.grams}g ({macros.carb.percentage}%)
               </span>
             </div>
@@ -179,8 +189,10 @@ const ChatBox = () => {
           {/* Fat */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-yellow-600 font-medium">Fat</span>
-              <span>
+              <span className="text-yellow-600 dark:text-yellow-400 font-medium">
+                Fat
+              </span>
+              <span className="text-gray-800 dark:text-gray-200">
                 {macros.fat.grams}g ({macros.fat.percentage}%)
               </span>
             </div>
@@ -229,7 +241,7 @@ const ChatBox = () => {
                 className={`w-8 h-8 rounded-full flex items-center justify-center ${
                   message.type === "user"
                     ? "bg-primary-500 text-white"
-                    : "bg-fitness-100 text-fitness-600"
+                    : "bg-fitness-100 dark:bg-fitness-900/30 text-fitness-600 dark:text-fitness-400"
                 }`}
               >
                 {message.type === "user" ? (
@@ -250,7 +262,7 @@ const ChatBox = () => {
                   <p className="whitespace-pre-wrap">{message.content}</p>
                 </div>
                 <span
-                  className={`text-xs text-gray-500 mt-1 ${
+                  className={`text-xs text-gray-500 dark:text-gray-400 mt-1 ${
                     message.type === "user" ? "text-right" : "text-left"
                   }`}
                 >
@@ -268,23 +280,23 @@ const ChatBox = () => {
         {isLoading && (
           <div className="flex justify-start">
             <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-fitness-100 text-fitness-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-fitness-100 dark:bg-fitness-900/30 text-fitness-600 dark:text-fitness-400 flex items-center justify-center">
                 <Bot className="w-4 h-4" />
               </div>
               <div className="chat-bubble chat-bubble-bot">
                 <div className="flex items-center gap-2">
                   <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"></div>
                     <div
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
                       style={{ animationDelay: "0.1s" }}
                     ></div>
                     <div
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
                       style={{ animationDelay: "0.2s" }}
                     ></div>
                   </div>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     Đang suy nghĩ...
                   </span>
                 </div>
@@ -297,7 +309,7 @@ const ChatBox = () => {
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-200">
+      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
         <div className="flex gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -305,7 +317,7 @@ const ChatBox = () => {
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Nhập tin nhắn của bạn..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               rows="1"
               disabled={isLoading}
             />
@@ -320,7 +332,7 @@ const ChatBox = () => {
           </button>
         </div>
 
-        <div className="mt-2 text-xs text-gray-500 text-center">
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
           Nhấn Enter để gửi, Shift+Enter để xuống dòng
         </div>
       </div>
