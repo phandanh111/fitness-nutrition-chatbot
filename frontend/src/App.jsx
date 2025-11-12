@@ -16,10 +16,10 @@ function App() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Fitness Nutrition AI
+                  The New Gym AI
                 </h1>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Chuyên gia dinh dưỡng thể hình thông minh
+                  Chuyên gia tư vấn The New Gym
                 </p>
               </div>
             </div>
@@ -115,7 +115,7 @@ function App() {
 
           {/* Chat Interface */}
           <div className="lg:col-span-3">
-            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 h-[600px] lg:h-[700px] transition-colors duration-200">
+            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 h-[700px] lg:h-[800px] transition-colors duration-200">
               <ChatBox />
             </div>
           </div>
@@ -123,12 +123,12 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 mt-16 transition-colors duration-200">
+      {/* <footer className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 mt-16 transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-sm text-gray-600 dark:text-gray-400">
             <p className="mb-2">
               <strong className="text-gray-900 dark:text-white">
-                Fitness Nutrition AI
+                The New Gym AI
               </strong>{" "}
               - Chuyên gia dinh dưỡng thể hình thông minh
             </p>
@@ -138,7 +138,7 @@ function App() {
             </p>
           </div>
         </div>
-      </footer>
+      </footer> */}
     </div>
   );
 }

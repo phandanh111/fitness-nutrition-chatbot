@@ -6,7 +6,8 @@ Backend cho chatbot tư vấn dinh dưỡng thể hình sử dụng Ollama
 import os
 import json
 import re
-from typing import Dict, List, Optional
+import unicodedata
+from typing import Dict, List, Optional, Tuple
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from dotenv import load_dotenv
 from utils.calculator import calculate_nutrition_plan
 from utils.formatter import format_nutrition_info, format_daily_menu, format_quick_tips
 from utils.ollama_client import ollama_client
+from utils.clubs_client import clubs_client
 import requests
 
 # Load environment variables
@@ -47,7 +49,7 @@ def load_system_prompt():
         with open("prompt_system.txt", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "Bạn là chuyên gia dinh dưỡng thể hình. Hãy tư vấn dinh dưỡng cho người tập gym."
+        return "Bạn là AI Assistant đa tác vụ của The New Gym. Hỗ trợ khách hàng về thông tin chi nhánh, tư vấn dinh dưỡng, và các câu hỏi khác về The New Gym."
 
 # In-memory storage for user sessions
 user_sessions: Dict[str, Dict] = {}
@@ -70,6 +72,363 @@ class UserInfo(BaseModel):
     goal: Optional[str] = None
     workout_days_per_week: Optional[int] = None
     session_id: str
+
+CITY_ALIASES = {
+    "hồ chí minh": "Hồ Chí Minh",
+    "ho chi minh": "Hồ Chí Minh",
+    "tp.hcm": "Hồ Chí Minh",
+    "tphcm": "Hồ Chí Minh",
+    "tp hcm": "Hồ Chí Minh",
+    "hcm": "Hồ Chí Minh",
+    "sai gon": "Hồ Chí Minh",
+    "sài gòn": "Hồ Chí Minh",
+    "đà nẵng": "Đà Nẵng",
+    "da nang": "Đà Nẵng",
+    "cần thơ": "Cần Thơ",
+    "can tho": "Cần Thơ",
+    "đồng nai": "Đồng Nai",
+    "dong nai": "Đồng Nai",
+    "biên hòa": "Đồng Nai",
+    "bien hoa": "Đồng Nai",
+    "bà rịa vũng tàu": "Bà Rịa Vũng Tàu",
+    "ba ria vung tau": "Bà Rịa Vũng Tàu",
+    "vũng tàu": "Bà Rịa Vũng Tàu",
+    "vung tau": "Bà Rịa Vũng Tàu",
+    "an giang": "An Giang",
+    "long xuyên": "An Giang"
+}
+
+COUNT_KEYWORDS = ["bao nhieu", "bao nhiêu", "co may", "có mấy", "có bao nhieu", "có bao nhiêu", "tong cong", "tổng cộng", "so luong", "số lượng"]
+ACTIVE_KEYWORDS = ["dang hoat dong", "đang hoạt động", "mo cua", "mở cửa", "con hoat dong", "còn hoạt động"]
+INACTIVE_KEYWORDS = ["tam dong", "tạm đóng", "tam ngung", "tạm ngưng", "tam ngưng", "da dong", "đã đóng", "ngung hoat dong", "ngừng hoạt động"]
+ADDRESS_KEYWORDS = ["dia chi", "địa chỉ", "o dau", "ở đâu", "vi tri", "vị trí", "location"]
+DISTRICT_KEYWORDS = ["quan", "quận", "huyen", "huyện", "phuong", "phường", "ward"]
+
+
+def normalize_text(text: str) -> str:
+    """Chuyển text về dạng lower-case và bỏ dấu để so khớp"""
+    if not text:
+        return ""
+    text = text.lower()
+    normalized = unicodedata.normalize("NFD", text)
+    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+
+
+def detect_city_from_message(message: str) -> Optional[str]:
+    normalized = normalize_text(message)
+    for alias, city in CITY_ALIASES.items():
+        if alias in normalized:
+            return city
+    return None
+
+
+def detect_district_from_message(message: str) -> Optional[str]:
+    """Phát hiện quận/huyện từ câu hỏi"""
+    normalized = normalize_text(message)
+    # Danh sách các quận/huyện phổ biến ở HCM và các thành phố khác
+    # Sắp xếp theo độ dài giảm dần để tránh match sai (quận 10, 11, 12 trước quận 1, 2, 3)
+    districts = [
+        "quan 10", "quận 10", "quan 11", "quận 11", "quan 12", "quận 12",
+        "quan 1", "quận 1", "quan 2", "quận 2", "quan 3", "quận 3",
+        "quan 4", "quận 4", "quan 5", "quận 5", "quan 6", "quận 6",
+        "quan 7", "quận 7", "quan 8", "quận 8", "quan 9", "quận 9",
+        "tan binh", "tân bình", "binh thanh", "bình thạnh",
+        "go vap", "gò vấp", "phu nhuan", "phú nhuận",
+        "tan phu", "tân phú", "binh tan", "bình tân",
+        "binh chanh", "bình chánh", "hoc mon", "hóc môn",
+        "cu chi", "củ chi", "nha be", "nhà bè", "can gio", "cần giờ",
+        "hai chau", "hải châu", "ninh kieu", "ninh kiều",
+        "bien hoa", "biên hòa", "vung tau", "vũng tàu",
+        "long xuyen", "long xuyên"
+    ]
+    for district in districts:
+        # Sử dụng word boundary để match chính xác hơn
+        # Tìm "quan 1" nhưng không match với "quan 10"
+        pattern = r'\b' + re.escape(district) + r'\b'
+        if re.search(pattern, normalized):
+            # Trả về tên quận với chữ hoa đầu
+            parts = district.split()
+            return " ".join(p.capitalize() for p in parts)
+    return None
+
+
+def find_club_by_name(message: str, clubs: List[Dict]) -> Optional[Dict]:
+    normalized = normalize_text(message)
+    for club in clubs:
+        name_vi = normalize_text(club.get("nameVi", ""))
+        name_en = normalize_text(club.get("nameEn", ""))
+        if name_vi and name_vi in normalized:
+            return club
+        if name_en and name_en in normalized:
+            return club
+    return None
+
+
+def split_clubs_by_status(clubs: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    active = [club for club in clubs if club.get("isActive") == 1]
+    inactive = [club for club in clubs if club.get("isActive") != 1]
+    return active, inactive
+
+
+def format_club_entry(club: Dict, index: Optional[int] = None) -> str:
+    """Format thông tin club"""
+    name_vi = club.get("nameVi", "")
+    name_en = club.get("nameEn", "")
+    location = club.get("location", club.get("address", ""))
+    district = club.get("district", {}).get("districtName")
+    status = "Đang hoạt động" if club.get("isActive") == 1 else "Tạm đóng"
+    info_url = club.get("informationUrl")
+    
+    prefix = f"{index}. " if index else ""
+    lines = [f"{prefix}**{name_vi}**"]
+    if name_en and name_en != name_vi:
+        lines.append(f"   ({name_en})")
+    if location:
+        lines.append(f"   Địa chỉ: {location}")
+    if district:
+        lines.append(f"   Quận/Huyện: {district}")
+    lines.append(f"   Trạng thái: {status}")
+    if info_url:
+        lines.append(f"   Link: {info_url}")
+    
+    return "\n".join(lines)
+
+
+def build_city_summary(city_name: str, clubs: List[Dict], is_count_query: bool, only_active: bool, only_inactive: bool) -> str:
+    """Tạo câu trả lời cho các chi nhánh trong một thành phố"""
+    if not clubs:
+        # Tìm chi nhánh gần nhất
+        all_clubs = clubs_client.fetch_clubs()
+        if all_clubs:
+            # Tìm chi nhánh ở thành phố khác gần nhất
+            other_cities = {}
+            for club in all_clubs:
+                club_city = club.get("city", {}).get("cityName", "")
+                if club_city and club_city != city_name:
+                    if club_city not in other_cities:
+                        other_cities[club_city] = []
+                    other_cities[club_city].append(club)
+            
+            if other_cities:
+                suggestions = []
+                for other_city, city_clubs in list(other_cities.items())[:3]:
+                    active_count = sum(1 for c in city_clubs if c.get("isActive") == 1)
+                    if active_count > 0:
+                        suggestions.append(f"- {other_city}: {active_count} chi nhánh đang hoạt động")
+                
+                if suggestions:
+                    return (
+                        f"Mình chưa tìm thấy chi nhánh nào của The New Gym ở {city_name}.\n\n"
+                        f"Bạn có muốn mình gợi ý các thành phố gần nhất có chi nhánh không?\n\n"
+                        + "\n".join(suggestions)
+                    )
+        
+        return f"Mình chưa tìm thấy chi nhánh nào của The New Gym ở {city_name}. Bạn muốn mình gợi ý khu vực gần nhất không?"
+    
+    active_clubs, inactive_clubs = split_clubs_by_status(clubs)
+    
+    # Giới hạn tối đa 3 chi nhánh khi hiển thị
+    max_display = 3
+    
+    if only_inactive:
+        if not inactive_clubs:
+            return f"Hiện không có chi nhánh nào tạm đóng tại {city_name}."
+        sections = [f"Có {len(inactive_clubs)} chi nhánh tạm đóng tại {city_name}:"]
+        for idx, club in enumerate(inactive_clubs[:max_display], 1):
+            sections.append(format_club_entry(club, idx))
+        if len(inactive_clubs) > max_display:
+            sections.append(f"\n... và {len(inactive_clubs) - max_display} chi nhánh khác.")
+    else:
+        if not active_clubs:
+            return f"Hiện không có chi nhánh nào đang hoạt động tại {city_name}."
+        
+        if is_count_query:
+            sections = [f"The New Gym có **{len(active_clubs)}** chi nhánh đang hoạt động tại {city_name}:"]
+        else:
+            sections = [f"Các chi nhánh đang hoạt động tại {city_name}:"]
+        
+        for idx, club in enumerate(active_clubs[:max_display], 1):
+            sections.append(format_club_entry(club, idx))
+        
+        if len(active_clubs) > max_display:
+            sections.append(f"\n... và {len(active_clubs) - max_display} chi nhánh khác.")
+            sections.append(f"Bạn muốn xem danh sách đầy đủ không?")
+    
+    return "\n\n".join(sections)
+
+
+def build_overall_summary(clubs: List[Dict]) -> str:
+    if not clubs:
+        return "Hiện hệ thống chưa có dữ liệu về bất kỳ chi nhánh nào."
+    # Nhóm theo thành phố
+    city_groups: Dict[str, List[Dict]] = {}
+    for club in clubs:
+        city_name = club.get("city", {}).get("cityName", "Không xác định")
+        city_groups.setdefault(city_name, []).append(club)
+    # Chỉ thống kê chi nhánh đang hoạt động
+    total_active = sum(1 for c in clubs if c.get("isActive") == 1)
+    sections = [f"Hệ thống ghi nhận tổng cộng {total_active} chi nhánh đang hoạt động trên {len(city_groups)} tỉnh/thành."]
+    for city_name, city_clubs in sorted(city_groups.items()):
+        active_clubs, _ = split_clubs_by_status(city_clubs)
+        sections.append(f"- {city_name}: {len(active_clubs)} chi nhánh đang hoạt động")
+    sections.append("Bạn muốn xem chi tiết về thành phố hoặc chi nhánh cụ thể nào không?")
+    sections.append("(Nguồn: API clubs của hệ thống)")
+    return "\n".join(sections)
+
+
+def build_single_club_summary(club: Dict) -> str:
+    """Tạo câu trả lời cho một chi nhánh cụ thể"""
+    name_vi = club.get("nameVi", "")
+    name_en = club.get("nameEn", "")
+    location = club.get("location", club.get("address", ""))
+    district = club.get("district", {}).get("districtName")
+    city_name = club.get("city", {}).get("cityName")
+    status = "Đang hoạt động bình thường" if club.get("isActive") == 1 else "Tạm đóng"
+    info_url = club.get("informationUrl")
+    
+    lines = [f"Chi nhánh **{name_vi}** của The New Gym:"]
+    if location:
+        lines.append(f"Địa chỉ: {location}")
+    if district:
+        lines.append(f"Quận/Huyện: {district}")
+    if city_name:
+        lines.append(f"Thành phố: {city_name}")
+    lines.append(f"Trạng thái: {status}")
+    if info_url:
+        lines.append(f"Xem thêm tại: {info_url}")
+    
+    return "\n".join(lines)
+
+
+def find_clubs_by_district(district_name: str, clubs: List[Dict]) -> List[Dict]:
+    """Tìm clubs theo quận/huyện với matching chính xác"""
+    normalized_district = normalize_text(district_name)
+    results = []
+    
+    # Tạo pattern để match chính xác, đảm bảo không match với số lớn hơn
+    # Ví dụ: "quan 1" sẽ match "Quận 1" nhưng không match "Quận 10" hoặc "Quận 11"
+    # Sử dụng negative lookahead để đảm bảo sau số không có số khác
+    if normalized_district.endswith(('1', '2', '3', '4', '5', '6', '7', '8', '9')):
+        # Nếu kết thúc bằng số đơn, đảm bảo không có số tiếp theo
+        pattern = r'\b' + re.escape(normalized_district) + r'(?!\d)'
+    else:
+        # Với các quận khác, dùng word boundary bình thường
+        pattern = r'\b' + re.escape(normalized_district) + r'\b'
+    
+    for club in clubs:
+        club_district = club.get("district", {}).get("districtName", "")
+        club_location = club.get("location", "")
+        
+        normalized_club_district = normalize_text(club_district)
+        normalized_club_location = normalize_text(club_location)
+        
+        # Match chính xác
+        if (re.search(pattern, normalized_club_district) or 
+            re.search(pattern, normalized_club_location)):
+            results.append(club)
+    
+    return results
+
+
+def generate_club_response(message: str) -> str:
+    """Tạo câu trả lời cho câu hỏi về clubs"""
+    # Mặc định chỉ dùng các chi nhánh đang hoạt động; nếu người dùng hỏi về chi nhánh tạm đóng thì lấy toàn bộ
+    normalized_initial = normalize_text(message)
+    wants_inactive_initial = any(keyword in normalized_initial for keyword in INACTIVE_KEYWORDS)
+    all_clubs = clubs_client.fetch_clubs()
+    clubs = all_clubs if wants_inactive_initial else clubs_client.get_active_clubs()
+    
+    if not clubs:
+        return "Xin lỗi, hiện chưa có dữ liệu về các chi nhánh trong hệ thống."
+    
+    normalized = normalize_text(message)
+    is_count_query = any(keyword in normalized for keyword in COUNT_KEYWORDS)
+    wants_active = any(keyword in normalized for keyword in ACTIVE_KEYWORDS)
+    wants_inactive = any(keyword in normalized for keyword in INACTIVE_KEYWORDS)
+    
+    # Tìm theo tên club cụ thể
+    club = find_club_by_name(message, all_clubs)
+    if club:
+        return build_single_club_summary(club)
+    
+    # Tìm theo quận/huyện
+    requested_district = detect_district_from_message(message)
+    if requested_district:
+        district_clubs = find_clubs_by_district(requested_district, clubs)
+        if district_clubs:
+            city_name = district_clubs[0].get("city", {}).get("cityName", "")
+            return build_city_summary(f"{requested_district}, {city_name}", district_clubs, is_count_query, wants_active, wants_inactive)
+        else:
+            # Tìm các quận gần nhất
+            all_districts = {}
+            for c in clubs:
+                d = c.get("district", {}).get("districtName", "")
+                if d:
+                    if d not in all_districts:
+                        all_districts[d] = []
+                    all_districts[d].append(c)
+            
+            suggestions = []
+            for dist, dist_clubs in list(all_districts.items())[:3]:
+                active_count = sum(1 for c in dist_clubs if c.get("isActive") == 1)
+                if active_count > 0:
+                    suggestions.append(f"- {dist}: {active_count} chi nhánh đang hoạt động")
+            
+            if suggestions:
+                return (
+                    f"Mình chưa tìm thấy chi nhánh nào ở {requested_district}.\n\n"
+                    f"Bạn có muốn xem các quận/huyện gần nhất có chi nhánh không?\n\n"
+                    + "\n".join(suggestions)
+                )
+            return f"Mình chưa tìm thấy chi nhánh nào ở {requested_district}. Bạn muốn mình gợi ý khu vực gần nhất không?"
+    
+    # Tìm theo thành phố
+    requested_city = detect_city_from_message(message)
+    if requested_city:
+        target_norm = normalize_text(requested_city)
+        city_clubs = [
+            c for c in clubs
+            if normalize_text(c.get("city", {}).get("cityName", "")) == target_norm
+            or target_norm in normalize_text(c.get("location", ""))
+        ]
+        return build_city_summary(requested_city, city_clubs, is_count_query, wants_active, wants_inactive)
+    
+    # Nếu người dùng hỏi địa chỉ nhưng không nêu tên cụ thể
+    if any(keyword in normalized for keyword in ADDRESS_KEYWORDS):
+        return (
+            "Bạn muốn biết địa chỉ của chi nhánh nào ạ?\n\n"
+            "Hãy cho mình biết:\n"
+            "- Tên chi nhánh (ví dụ: Hoàng Văn Thụ, Điện Biên Phủ...)\n"
+            "- Hoặc khu vực bạn muốn tìm (ví dụ: Quận 3, Tân Bình...)\n"
+            "- Hoặc thành phố (ví dụ: Hồ Chí Minh, Đà Nẵng...)"
+        )
+    
+    # Nếu người dùng chỉ hỏi chung chung
+    return build_overall_summary(clubs)
+
+
+def is_club_related_query(message: str) -> bool:
+    """Kiểm tra xem câu hỏi có liên quan đến clubs không"""
+    message_lower = message.lower()
+    club_keywords = [
+        'club', 'phòng gym', 'chi nhánh', 'địa điểm', 'cơ sở',
+        'gym ở', 'phòng tập ở', 'địa chỉ', 'ở đâu', 'quận',
+        'thành phố', 'hcm', 'hồ chí minh', 'tphcm', 'tp.hcm',
+        'đà nẵng', 'cần thơ', 'biên hòa', 'vũng tàu', 
+        'long xuyên', 'hậu giang', 'đồng nai', 'an giang',
+        'bà rịa vũng tàu', 'hoàng văn thụ', 'âu cơ', 
+        'quang trung', 'điện biên phủ', 'nguyễn chí thanh', 
+        'nguyễn thị thập', 'ung văn khiêm', 'nguyễn ái quốc', 
+        'trần hưng đạo', 'hoàng diệu', 'phan đăng lưu', 
+        'nam kỳ khởi nghĩa', 'lý thường kiệt', 'bao nhiêu',
+        'có mấy', 'danh sách', 'liệt kê'
+    ]
+    # Kiểm tra nếu có từ khóa về clubs hoặc số lượng/đếm
+    has_club_keyword = any(keyword in message_lower for keyword in club_keywords)
+    # Kiểm tra nếu có từ về số lượng kết hợp với từ về địa điểm/gym
+    has_count_query = any(word in message_lower for word in ['bao nhiêu', 'có mấy', 'có bao nhiêu']) and \
+                     any(word in message_lower for word in ['gym', 'phòng', 'club', 'chi nhánh', 'cơ sở', 'địa điểm'])
+    return has_club_keyword or has_count_query
 
 def extract_user_info_from_message(message: str) -> Dict:
     """Trích xuất thông tin người dùng từ tin nhắn"""
@@ -191,6 +550,13 @@ async def chat(chat_message: ChatMessage):
         # Load system prompt
         system_prompt = load_system_prompt()
         
+        # Check if query is about clubs
+        is_club_query = is_club_related_query(message)
+        club_response_text: Optional[str] = None
+        
+        if is_club_query:
+            club_response_text = generate_club_response(message)
+        
         # Extract user info from message
         user_info = extract_user_info_from_message(message)
         
@@ -199,6 +565,13 @@ async def chat(chat_message: ChatMessage):
             user_sessions[session_id] = {}
         
         user_sessions[session_id].update(user_info)
+        
+        if is_club_query and club_response_text:
+            return ChatResponse(
+                response=club_response_text,
+                session_id=session_id,
+                nutrition_info=None
+            )
         
         # Prepare messages for AI
         messages = [{"role": "user", "content": message}]
@@ -229,6 +602,84 @@ async def chat(chat_message: ChatMessage):
             nutrition_info=nutrition_info
         )
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/clubs")
+async def get_clubs(refresh: bool = False):
+    """Lấy danh sách tất cả clubs"""
+    try:
+        clubs = clubs_client.fetch_clubs(use_cache=not refresh)
+        source = clubs_client.get_last_source()
+        return {
+            "code": 1010,
+            "message": "GET_CLUBS_REFRESH" if refresh else "GET_CLUBS",
+            "data": clubs,
+            "meta": {
+                "count": len(clubs),
+                "source": source,
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "refresh": refresh
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/clubs/search")
+async def search_clubs(q: str, refresh: bool = False):
+    """Tìm kiếm clubs theo từ khóa"""
+    try:
+        if not q:
+            raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
+        results = clubs_client.search_clubs(q, use_cache=not refresh)
+        source = clubs_client.get_last_source()
+        return {
+            "code": 1010,
+            "message": "SEARCH_CLUBS_REFRESH" if refresh else "SEARCH_CLUBS",
+            "data": results,
+            "meta": {
+                "count": len(results),
+                "source": source,
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "refresh": refresh,
+                "query": q
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/clubs/active")
+async def get_active_clubs(refresh: bool = False):
+    """Lấy danh sách clubs đang hoạt động"""
+    try:
+        clubs = clubs_client.get_active_clubs(use_cache=not refresh)
+        source = clubs_client.get_last_source()
+        return {
+            "code": 1010,
+            "message": "GET_ACTIVE_CLUBS_REFRESH" if refresh else "GET_ACTIVE_CLUBS",
+            "data": clubs,
+            "meta": {
+                "count": len(clubs),
+                "source": source,
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "refresh": refresh
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/clubs/cache")
+async def clear_clubs_cache():
+    """Xóa cache clubs để lần gọi tiếp theo lấy dữ liệu mới"""
+    try:
+        clubs_client.clear_cache()
+        return {
+            "message": "Clubs cache cleared",
+            "meta": {
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "source": clubs_client.get_last_source()
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,13 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Send,
-  Bot,
-  User,
-  Activity,
-  Target,
-  Zap,
-  TrendingUp,
-} from "lucide-react";
+import { Send, Bot, User, Activity } from "lucide-react";
 import { chatAPI } from "../api";
 
 const ChatBox = () => {
@@ -34,7 +26,7 @@ const ChatBox = () => {
       id: Date.now(),
       type: "bot",
       content:
-        "Xin chào! Tôi là chuyên gia dinh dưỡng thể hình AI của bạn! 💪\n\nĐể có thể tư vấn chính xác nhất, hãy cho tôi biết:\n• Chiều cao (cm)\n• Cân nặng (kg)\n• Tuổi và giới tính\n• Mục tiêu (tăng cơ, giảm mỡ, giữ cân)\n• Số buổi tập/tuần\n\nBạn có thể chia sẻ thông tin này trong một tin nhắn hoặc từng phần nhé!",
+        "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Thông tin về các chi nhánh/clubs\n• Tư vấn dinh dưỡng và thể hình\n• Câu hỏi về dịch vụ của The New Gym\n• Tư vấn về chương trình tập luyện\n\nBạn cần hỗ trợ gì hôm nay?",
       timestamp: new Date(),
     };
     setMessages([welcomeMessage]);
@@ -217,8 +209,8 @@ const ChatBox = () => {
             <Bot className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Fitness Nutrition AI</h1>
-            <p className="text-sm opacity-90">Chuyên gia dinh dưỡng thể hình</p>
+            <h1 className="text-xl font-bold">The New Gym AI</h1>
+            <p className="text-sm opacity-90">Chuyên gia tư vấn The New Gym</p>
           </div>
         </div>
       </div>
