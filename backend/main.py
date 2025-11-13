@@ -1,8 +1,3 @@
-"""
-Fitness Nutrition Chatbot API
-Backend cho chatbot tư vấn dinh dưỡng thể hình sử dụng Ollama
-"""
-
 import os
 import json
 import re
@@ -16,6 +11,15 @@ from utils.calculator import calculate_nutrition_plan
 from utils.formatter import format_nutrition_info, format_daily_menu, format_quick_tips
 from utils.ollama_client import ollama_client
 from utils.clubs_client import clubs_client
+from constants.clubs import (
+    RAW_CITY_ALIAS_PAIRS,
+    RAW_DISTRICT_ALIAS_PAIRS,
+    COUNT_KEYWORDS,
+    ACTIVE_KEYWORDS,
+    INACTIVE_KEYWORDS,
+    ADDRESS_KEYWORDS,
+    DISTRICT_KEYWORDS,
+)
 import requests
 
 # Load environment variables
@@ -73,37 +77,6 @@ class UserInfo(BaseModel):
     workout_days_per_week: Optional[int] = None
     session_id: str
 
-CITY_ALIASES = {
-    "hồ chí minh": "Hồ Chí Minh",
-    "ho chi minh": "Hồ Chí Minh",
-    "tp.hcm": "Hồ Chí Minh",
-    "tphcm": "Hồ Chí Minh",
-    "tp hcm": "Hồ Chí Minh",
-    "hcm": "Hồ Chí Minh",
-    "sai gon": "Hồ Chí Minh",
-    "sài gòn": "Hồ Chí Minh",
-    "đà nẵng": "Đà Nẵng",
-    "da nang": "Đà Nẵng",
-    "cần thơ": "Cần Thơ",
-    "can tho": "Cần Thơ",
-    "đồng nai": "Đồng Nai",
-    "dong nai": "Đồng Nai",
-    "biên hòa": "Đồng Nai",
-    "bien hoa": "Đồng Nai",
-    "bà rịa vũng tàu": "Bà Rịa Vũng Tàu",
-    "ba ria vung tau": "Bà Rịa Vũng Tàu",
-    "vũng tàu": "Bà Rịa Vũng Tàu",
-    "vung tau": "Bà Rịa Vũng Tàu",
-    "an giang": "An Giang",
-    "long xuyên": "An Giang"
-}
-
-COUNT_KEYWORDS = ["bao nhieu", "bao nhiêu", "co may", "có mấy", "có bao nhieu", "có bao nhiêu", "tong cong", "tổng cộng", "so luong", "số lượng"]
-ACTIVE_KEYWORDS = ["dang hoat dong", "đang hoạt động", "mo cua", "mở cửa", "con hoat dong", "còn hoạt động"]
-INACTIVE_KEYWORDS = ["tam dong", "tạm đóng", "tam ngung", "tạm ngưng", "tam ngưng", "da dong", "đã đóng", "ngung hoat dong", "ngừng hoạt động"]
-ADDRESS_KEYWORDS = ["dia chi", "địa chỉ", "o dau", "ở đâu", "vi tri", "vị trí", "location"]
-DISTRICT_KEYWORDS = ["quan", "quận", "huyen", "huyện", "phuong", "phường", "ward"]
-
 
 def normalize_text(text: str) -> str:
     """Chuyển text về dạng lower-case và bỏ dấu để so khớp"""
@@ -114,10 +87,29 @@ def normalize_text(text: str) -> str:
     return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
 
 
+CITY_ALIAS_MAP: Dict[str, str] = {}
+for canonical, aliases in RAW_CITY_ALIAS_PAIRS:
+    for alias in aliases:
+        CITY_ALIAS_MAP[alias] = canonical
+        CITY_ALIAS_MAP[normalize_text(alias)] = canonical
+
+
+DISTRICT_ALIAS_MAP: Dict[str, str] = {}
+for canonical, aliases in RAW_DISTRICT_ALIAS_PAIRS:
+    for alias in aliases:
+        DISTRICT_ALIAS_MAP[alias] = canonical
+        DISTRICT_ALIAS_MAP[normalize_text(alias)] = canonical
+
+
 def detect_city_from_message(message: str) -> Optional[str]:
+    """Phát hiện thành phố từ câu hỏi, ưu tiên alias dài hơn"""
     normalized = normalize_text(message)
-    for alias, city in CITY_ALIASES.items():
-        if alias in normalized:
+    
+    # Duyệt alias đã chuẩn hoá, dài trước
+    sorted_aliases = sorted(CITY_ALIAS_MAP.items(), key=lambda x: len(x[0]), reverse=True)
+    for alias, city in sorted_aliases:
+        normalized_alias = normalize_text(alias)
+        if normalized_alias in normalized:
             return city
     return None
 
@@ -127,28 +119,11 @@ def detect_district_from_message(message: str) -> Optional[str]:
     normalized = normalize_text(message)
     # Danh sách các quận/huyện phổ biến ở HCM và các thành phố khác
     # Sắp xếp theo độ dài giảm dần để tránh match sai (quận 10, 11, 12 trước quận 1, 2, 3)
-    districts = [
-        "quan 10", "quận 10", "quan 11", "quận 11", "quan 12", "quận 12",
-        "quan 1", "quận 1", "quan 2", "quận 2", "quan 3", "quận 3",
-        "quan 4", "quận 4", "quan 5", "quận 5", "quan 6", "quận 6",
-        "quan 7", "quận 7", "quan 8", "quận 8", "quan 9", "quận 9",
-        "tan binh", "tân bình", "binh thanh", "bình thạnh",
-        "go vap", "gò vấp", "phu nhuan", "phú nhuận",
-        "tan phu", "tân phú", "binh tan", "bình tân",
-        "binh chanh", "bình chánh", "hoc mon", "hóc môn",
-        "cu chi", "củ chi", "nha be", "nhà bè", "can gio", "cần giờ",
-        "hai chau", "hải châu", "ninh kieu", "ninh kiều",
-        "bien hoa", "biên hòa", "vung tau", "vũng tàu",
-        "long xuyen", "long xuyên"
-    ]
-    for district in districts:
-        # Sử dụng word boundary để match chính xác hơn
-        # Tìm "quan 1" nhưng không match với "quan 10"
-        pattern = r'\b' + re.escape(district) + r'\b'
-        if re.search(pattern, normalized):
-            # Trả về tên quận với chữ hoa đầu
-            parts = district.split()
-            return " ".join(p.capitalize() for p in parts)
+    sorted_aliases = sorted(DISTRICT_ALIAS_MAP.items(), key=lambda x: len(x[0]), reverse=True)
+    for alias, canonical in sorted_aliases:
+        normalized_alias = normalize_text(alias)
+        if normalized_alias in normalized:
+            return canonical
     return None
 
 
@@ -172,24 +147,16 @@ def split_clubs_by_status(clubs: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
 
 def format_club_entry(club: Dict, index: Optional[int] = None) -> str:
     """Format thông tin club"""
-    name_vi = club.get("nameVi", "")
-    name_en = club.get("nameEn", "")
+    name_vi = club.get("nameVi") or club.get("nameEn") or "Chi nhánh"
     location = club.get("location", club.get("address", ""))
-    district = club.get("district", {}).get("districtName")
-    status = "Đang hoạt động" if club.get("isActive") == 1 else "Tạm đóng"
     info_url = club.get("informationUrl")
     
     prefix = f"{index}. " if index else ""
     lines = [f"{prefix}**{name_vi}**"]
-    if name_en and name_en != name_vi:
-        lines.append(f"   ({name_en})")
     if location:
         lines.append(f"   Địa chỉ: {location}")
-    if district:
-        lines.append(f"   Quận/Huyện: {district}")
-    lines.append(f"   Trạng thái: {status}")
     if info_url:
-        lines.append(f"   Link: {info_url}")
+        lines.append(f"Link tham khảo: {info_url}")
     
     return "\n".join(lines)
 
@@ -278,55 +245,30 @@ def build_overall_summary(clubs: List[Dict]) -> str:
 
 def build_single_club_summary(club: Dict) -> str:
     """Tạo câu trả lời cho một chi nhánh cụ thể"""
-    name_vi = club.get("nameVi", "")
-    name_en = club.get("nameEn", "")
+    name_vi = club.get("nameVi") or club.get("nameEn") or "Chi nhánh"
     location = club.get("location", club.get("address", ""))
-    district = club.get("district", {}).get("districtName")
     city_name = club.get("city", {}).get("cityName")
-    status = "Đang hoạt động bình thường" if club.get("isActive") == 1 else "Tạm đóng"
     info_url = club.get("informationUrl")
     
     lines = [f"Chi nhánh **{name_vi}** của The New Gym:"]
     if location:
         lines.append(f"Địa chỉ: {location}")
-    if district:
-        lines.append(f"Quận/Huyện: {district}")
     if city_name:
         lines.append(f"Thành phố: {city_name}")
-    lines.append(f"Trạng thái: {status}")
-    if info_url:
-        lines.append(f"Xem thêm tại: {info_url}")
     
     return "\n".join(lines)
 
 
 def find_clubs_by_district(district_name: str, clubs: List[Dict]) -> List[Dict]:
     """Tìm clubs theo quận/huyện với matching chính xác"""
-    normalized_district = normalize_text(district_name)
+    normalized_target = normalize_text(district_name)
+    canonical = DISTRICT_ALIAS_MAP.get(district_name) or DISTRICT_ALIAS_MAP.get(normalized_target, district_name)
     results = []
-    
-    # Tạo pattern để match chính xác, đảm bảo không match với số lớn hơn
-    # Ví dụ: "quan 1" sẽ match "Quận 1" nhưng không match "Quận 10" hoặc "Quận 11"
-    # Sử dụng negative lookahead để đảm bảo sau số không có số khác
-    if normalized_district.endswith(('1', '2', '3', '4', '5', '6', '7', '8', '9')):
-        # Nếu kết thúc bằng số đơn, đảm bảo không có số tiếp theo
-        pattern = r'\b' + re.escape(normalized_district) + r'(?!\d)'
-    else:
-        # Với các quận khác, dùng word boundary bình thường
-        pattern = r'\b' + re.escape(normalized_district) + r'\b'
-    
     for club in clubs:
         club_district = club.get("district", {}).get("districtName", "")
         club_location = club.get("location", "")
-        
-        normalized_club_district = normalize_text(club_district)
-        normalized_club_location = normalize_text(club_location)
-        
-        # Match chính xác
-        if (re.search(pattern, normalized_club_district) or 
-            re.search(pattern, normalized_club_location)):
+        if normalize_text(canonical) in normalize_text(club_district) or normalize_text(canonical) in normalize_text(club_location):
             results.append(club)
-    
     return results
 
 
@@ -386,11 +328,20 @@ def generate_club_response(message: str) -> str:
     requested_city = detect_city_from_message(message)
     if requested_city:
         target_norm = normalize_text(requested_city)
-        city_clubs = [
-            c for c in clubs
-            if normalize_text(c.get("city", {}).get("cityName", "")) == target_norm
-            or target_norm in normalize_text(c.get("location", ""))
-        ]
+        city_clubs = []
+        for c in clubs:
+            club_city = c.get("city", {}).get("cityName", "")
+            club_location = c.get("location", "")
+            normalized_club_city = normalize_text(club_city)
+            normalized_club_location = normalize_text(club_location)
+            
+            # Match chính xác với thành phố
+            if normalized_club_city == target_norm:
+                city_clubs.append(c)
+            # Hoặc thành phố có trong location
+            elif target_norm in normalized_club_location:
+                city_clubs.append(c)
+        
         return build_city_summary(requested_city, city_clubs, is_count_query, wants_active, wants_inactive)
     
     # Nếu người dùng hỏi địa chỉ nhưng không nêu tên cụ thể
