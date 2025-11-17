@@ -38,6 +38,9 @@ env.bak/
 venv.bak/
 .venv/
 
+# Generated data artifacts
+backend/data/
+
 # IDE
 .vscode/
 .idea/

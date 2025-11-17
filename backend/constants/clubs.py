@@ -22,18 +22,54 @@ RAW_DISTRICT_ALIAS_PAIRS: List[Tuple[str, List[str]]] = [
     ("Quận 10", ["quan 10", "quận 10", "district 10"]),
     ("Quận 11", ["quan 11", "quận 11", "district 11"]),
     ("Quận 12", ["quan 12", "quận 12", "district 12"]),
-    ("Quận Bình Thạnh", ["binh thanh", "bình thạnh"]),
-    ("Quận Tân Bình", ["tan binh", "tân bình"]),
-    ("Quận Phú Nhuận", ["phu nhuan", "phú nhuận"]),
-    ("Quận Gò Vấp", ["go vap", "gò vấp"]),
-    ("Quận Tân Phú", ["tan phu", "tân phú"]),
-    ("Quận Bình Tân", ["binh tan", "bình tân"]),
-    ("Quận Bình Chánh", ["binh chanh", "bình chánh"]),
-    ("Quận Nhà Bè", ["nha be", "nhà bè"]),
-    ("Quận Hóc Môn", ["hoc mon", "hóc môn"]),
-    ("Quận Củ Chi", ["cu chi", "củ chi"]),
-    ("Quận Hải Châu", ["hai chau", "hải châu"]),
-    ("Quận Ninh Kiều", ["ninh kieu", "ninh kiều"]),
+    (
+        "Bình Thạnh",
+        ["binh thanh", "bình thạnh", "quan binh thanh", "quận bình thạnh", "district binh thanh"],
+    ),
+    (
+        "Tân Bình",
+        ["tan binh", "tân bình", "quan tan binh", "quận tân bình", "district tan binh"],
+    ),
+    (
+        "Phú Nhuận",
+        ["phu nhuan", "phú nhuận", "quan phu nhuan", "quận phú nhuận", "district phu nhuan"],
+    ),
+    (
+        "Gò Vấp",
+        ["go vap", "gò vấp", "quan go vap", "quận gò vấp", "district go vap"],
+    ),
+    (
+        "Tân Phú",
+        ["tan phu", "tân phú", "quan tan phu", "quận tân phú", "district tan phu"],
+    ),
+    (
+        "Bình Tân",
+        ["binh tan", "bình tân", "quan binh tan", "quận bình tân", "district binh tan"],
+    ),
+    (
+        "Bình Chánh",
+        ["binh chanh", "bình chánh", "quan binh chanh", "quận bình chánh", "district binh chanh"],
+    ),
+    (
+        "Nhà Bè",
+        ["nha be", "nhà bè", "quan nha be", "quận nhà bè", "district nha be"],
+    ),
+    (
+        "Hóc Môn",
+        ["hoc mon", "hóc môn", "quan hoc mon", "quận hóc môn", "district hoc mon"],
+    ),
+    (
+        "Củ Chi",
+        ["cu chi", "củ chi", "quan cu chi", "quận củ chi", "district cu chi"],
+    ),
+    (
+        "Hải Châu",
+        ["hai chau", "hải châu", "quan hai chau", "quận hải châu", "district hai chau"],
+    ),
+    (
+        "Ninh Kiều",
+        ["ninh kieu", "ninh kiều", "quan ninh kieu", "quận ninh kiều", "district ninh kieu"],
+    ),
     ("Thành phố Biên Hòa", ["bien hoa", "biên hòa"]),
     ("Thành phố Vũng Tàu", ["vung tau", "vũng tàu"]),
     ("Thành phố Long Xuyên", ["long xuyen", "long xuyên"]),

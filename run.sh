@@ -49,6 +49,15 @@ fi
 source venv/bin/activate
 pip install -r requirements.txt
 
+# Cập nhật semantic index cho clubs
+echo "🧠 Cập nhật dữ liệu tìm kiếm (RAG)..."
+python scripts/build_club_index.py
+if [ $? -ne 0 ]; then
+    echo "❌ Lỗi khi xây dựng RAG index. Vui lòng kiểm tra kết nối internet và thử lại."
+    deactivate
+    exit 1
+fi
+
 # Kiểm tra .env
 if [ ! -f ".env" ]; then
     echo "📝 Tạo file .env từ template..."
