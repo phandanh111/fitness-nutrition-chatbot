@@ -3,83 +3,21 @@
 from __future__ import annotations
 
 import os
-import unicodedata
 from typing import Dict, List, Optional, Tuple
 
-from constants.clubs import (
-    RAW_CITY_ALIAS_PAIRS,
-    RAW_DISTRICT_ALIAS_PAIRS,
-    COUNT_KEYWORDS,
-    ACTIVE_KEYWORDS,
-    INACTIVE_KEYWORDS,
-    ADDRESS_KEYWORDS,
-)
 from utils.clubs_client import clubs_client
 from rag.club_rag import semantic_search
 from services.llm_service import get_ai_response
 
-CityAliasMap = Dict[str, str]
-DistrictAliasMap = Dict[str, str]
-
 MAX_CONTEXT_CLUBS = int(os.getenv("CLUB_CONTEXT_LIMIT", "4"))
 RAG_SYSTEM_PROMPT = (
-    "Bạn là AI Assistant của The New Gym. "
-    "Chỉ trả lời dựa trên ngữ cảnh cung cấp, không tự suy đoán thêm. "
-    "Luôn trả lời bằng tiếng Việt, giọng thân thiện, mạch lạc. "
-    "Mỗi chi nhánh nên bao gồm tên (ưu tiên tiếng Việt), địa chỉ và link ở dạng [Tên](URL). "
-    "Nếu không tìm thấy thông tin phù hợp trong ngữ cảnh, hãy nói rõ và gợi ý khách cung cấp thêm dữ liệu."
+    "Bạn là AI Assistant của The New Gym với phong cách trò chuyện tự nhiên, thân thiện, giống như một tư vấn viên đang nói chuyện trực tiếp với khách. "
+    "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong ngữ cảnh được cung cấp. "
+    "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về chi nhánh, địa chỉ, tên, hoặc bất kỳ thông tin nào khác. "
+    "Nếu ngữ cảnh không chứa thông tin về chi nhánh được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy chi nhánh nào ở [khu vực]' và KHÔNG được liệt kê các chi nhánh không có trong ngữ cảnh. "
+    "Luôn trả lời bằng tiếng Việt, dùng đại từ thân mật (ví dụ: 'mình', 'bạn'), câu văn mềm mại, ngắn gọn, hạn chế lặp lại. "
+    "Mỗi chi nhánh nên bao gồm tên (ưu tiên tiếng Việt), địa chỉ và link ở dạng [Tên](URL) - CHỈ khi thông tin này có trong ngữ cảnh."
 )
-
-
-def normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    text = text.lower()
-    normalized = unicodedata.normalize("NFD", text)
-    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
-
-
-def _build_alias_map(pairs: List[Tuple[str, List[str]]]) -> Dict[str, str]:
-    alias_map: Dict[str, str] = {}
-    for canonical, aliases in pairs:
-        for alias in aliases:
-            alias_map[alias] = canonical
-            alias_map[normalize_text(alias)] = canonical
-    return alias_map
-
-
-CITY_ALIAS_MAP: CityAliasMap = _build_alias_map(RAW_CITY_ALIAS_PAIRS)
-DISTRICT_ALIAS_MAP: DistrictAliasMap = _build_alias_map(RAW_DISTRICT_ALIAS_PAIRS)
-
-
-def detect_city_from_message(message: str) -> Optional[str]:
-    normalized = normalize_text(message)
-    sorted_aliases = sorted(CITY_ALIAS_MAP.items(), key=lambda x: len(x[0]), reverse=True)
-    for alias, city in sorted_aliases:
-        if normalize_text(alias) in normalized:
-            return city
-    return None
-
-
-def detect_district_from_message(message: str) -> Optional[str]:
-    normalized = normalize_text(message)
-    sorted_aliases = sorted(DISTRICT_ALIAS_MAP.items(), key=lambda x: len(x[0]), reverse=True)
-    for alias, canonical in sorted_aliases:
-        if normalize_text(alias) in normalized:
-            return canonical
-    return None
-
-
-def find_club_by_name(message: str, clubs: List[Dict]) -> Optional[Dict]:
-    normalized = normalize_text(message)
-    for club in clubs:
-        name_vi = normalize_text(club.get("nameVi", ""))
-        name_en = normalize_text(club.get("nameEn", ""))
-        if name_vi and name_vi in normalized:
-            return club
-        if name_en and name_en in normalized:
-            return club
-    return None
 
 
 def split_clubs_by_status(clubs: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
@@ -161,24 +99,46 @@ def build_overall_context(clubs: List[Dict]) -> str:
 
 
 def build_no_data_message(label: str, level: str, clubs: List[Dict]) -> str:
-    suggestions: Dict[str, int] = {}
-    key_name = "district" if level == "district" else "city"
-    for club in clubs:
-        area = club.get(key_name, {}).get(f"{key_name}Name", "")
-        if not area or area == label:
-            continue
-        suggestions[area] = suggestions.get(area, 0) + 1
+    active_clubs = [club for club in clubs if club.get("isActive") == 1]
+    if not active_clubs:
+        return f"Mình chưa tìm thấy chi nhánh nào ở {label}. Hệ thống hiện chưa có dữ liệu chi nhánh đang hoạt động."
 
-    if suggestions:
-        top_suggestions = sorted(suggestions.items(), key=lambda x: x[1], reverse=True)[:3]
-        lines = [
-            f"Mình chưa tìm thấy chi nhánh nào ở {label}.",
-            "Các khu vực lân cận đang có chi nhánh:",
-        ]
-        for area, count in top_suggestions:
-            lines.append(f"- {area}: {count} chi nhánh đang hoạt động")
-        return "\n".join(lines)
-    return f"Mình chưa tìm thấy chi nhánh nào ở {label}. Bạn muốn mình gợi ý khu vực khác không?"
+    key_name = "district" if level == "district" else "city"
+    area_groups: Dict[str, List[Dict]] = {}
+    for club in active_clubs:
+        area = club.get(key_name, {}).get(f"{key_name}Name")
+        fallback_area = club.get("city", {}).get("cityName") if key_name == "district" else area
+        normalized_area = area or fallback_area or "Khu vực khác"
+        if normalized_area == label:
+            continue
+        area_groups.setdefault(normalized_area, []).append(club)
+
+    if not area_groups:
+        area_groups["Khu vực khác"] = active_clubs
+
+    sorted_areas = sorted(area_groups.items(), key=lambda item: len(item[1]), reverse=True)
+    suggested_clubs: List[Dict] = []
+    for _, area_clubs in sorted_areas:
+        for club in area_clubs:
+            suggested_clubs.append(club)
+            if len(suggested_clubs) >= 3:
+                break
+        if len(suggested_clubs) >= 3:
+            break
+
+    def format_club_line(club: Dict) -> str:
+        name = club.get("nameVi") or club.get("nameEn") or "Chi nhánh"
+        link = club.get("informationUrl")
+        location = club.get("location") or club.get("address") or ""
+        display_name = f"[{name}]({link})" if link else name
+        return f"- {display_name}" + (f" – {location}" if location else "")
+
+    lines = [
+        f"Mình chưa tìm thấy chi nhánh nào ở {label}.",
+        "Bạn có thể tham khảo một số chi nhánh đang hoạt động gần khu vực khác:",
+    ]
+    lines.extend(format_club_line(club) for club in suggested_clubs)
+    return "\n".join(lines)
 
 
 def generate_answer_from_context(question: str, context_blocks: List[str], extra_guidance: Optional[str] = None) -> str:
@@ -187,9 +147,13 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
 
     context_text = "\n\n".join(f"[Đoạn {idx}] {block}" for idx, block in enumerate(context_blocks, 1))
     guidance_lines = [
-        "- Chỉ sử dụng thông tin trong các đoạn ngữ cảnh.",
-        "- Liệt kê tối đa 3 chi nhánh phù hợp nhất, mỗi chi nhánh gồm tên, địa chỉ, link (nếu có).",
-        "- Dùng Markdown để hiển thị link dạng [Xem thêm](URL).",
+        "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
+        "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về chi nhánh, địa chỉ, tên, hoặc bất kỳ thông tin nào khác.",
+        "Nếu ngữ cảnh không chứa thông tin về chi nhánh được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy chi nhánh nào ở [khu vực]' và KHÔNG được liệt kê các chi nhánh không có trong ngữ cảnh.",
+        "- Liệt kê tối đa 3 chi nhánh phù hợp nhất, mỗi chi nhánh gồm tên, địa chỉ, link (nếu có) - CHỈ khi thông tin này có trong ngữ cảnh.",
+        "- Dùng Markdown để hiển thị link dạng [Tên](URL).",
+        "- Nếu chỉ có 1 chi nhánh phù hợp thì CHỈ nêu chi nhánh đó, KHÔNG thêm câu như 'không có chi nhánh nào khác'.",
+        "- Giữ giọng điệu mềm mại, gần gũi, dùng đại từ 'mình'/'bạn', tránh nhắc lặp lại cùng một câu.",
     ]
     if extra_guidance:
         guidance_lines.append(f"- {extra_guidance}")
@@ -197,124 +161,88 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
     prompt = (
         f"Ngữ cảnh:\n{context_text}\n\n"
         f"Hướng dẫn:\n" + "\n".join(guidance_lines) + "\n\n"
-        f"Câu hỏi của khách: {question}"
+        f"Câu hỏi của khách: {question}\n\n"
+        f"LƯU Ý CUỐI CÙNG: Nếu câu hỏi về một khu vực cụ thể (ví dụ: Thủ Đức, Quận X) nhưng trong ngữ cảnh không có chi nhánh nào ở khu vực đó, bạn PHẢI trả lời 'Mình chưa tìm thấy chi nhánh nào ở [khu vực đó]' và KHÔNG được liệt kê các chi nhánh ở khu vực khác như thể chúng ở khu vực được hỏi."
     )
     messages = [{"role": "user", "content": prompt}]
     return get_ai_response(messages, RAG_SYSTEM_PROMPT)
 
 
-def is_club_related_query(message: str) -> bool:
-    message_lower = message.lower()
-    club_keywords = [
-        "club",
-        "phòng gym",
-        "chi nhánh",
-        "địa điểm",
-        "cơ sở",
-        "gym ở",
-        "phòng tập ở",
-        "địa chỉ",
-        "ở đâu",
-        "quận",
-        "thành phố",
-        "hcm",
-        "hồ chí minh",
-        "tphcm",
-        "tp.hcm",
-        "đà nẵng",
-        "cần thơ",
-        "biên hòa",
-        "vũng tàu",
-        "long xuyên",
-        "hậu giang",
-        "đồng nai",
-        "an giang",
-        "bà rịa vũng tàu",
-        "hoàng văn thụ",
-        "âu cơ",
-        "quang trung",
-        "điện biên phủ",
-        "nguyễn chí thanh",
-        "nguyễn thị thập",
-        "ung văn khiêm",
-        "nguyễn ái quốc",
-        "trần hưng đạo",
-        "hoàng diệu",
-        "phan đăng lưu",
-        "nam kỳ khởi nghĩa",
-        "lý thường kiệt",
-        "bao nhiêu",
-        "có mấy",
-        "danh sách",
-        "liệt kê",
-    ]
-    has_club_keyword = any(keyword in message_lower for keyword in club_keywords)
-    has_count_query = any(word in message_lower for word in ["bao nhiêu", "có mấy", "có bao nhiêu"]) and any(
-        word in message_lower for word in ["gym", "phòng", "club", "chi nhánh", "cơ sở", "địa điểm"]
-    )
-    return has_club_keyword or has_count_query
+def is_club_related_query(_: str) -> bool:
+    """Dự án chỉ phục vụ thông tin chi nhánh → mọi câu đều xử lý bằng RAG."""
+    return True
+
+
+def search_clubs_by_keyword(message: str, clubs: List[Dict]) -> List[Dict]:
+    """Tìm chi nhánh nếu từ khóa xuất hiện trực tiếp trong dữ liệu (không alias phức tạp)."""
+    query = message.lower()
+    if not query.strip():
+        return []
+
+    results: List[Dict] = []
+    for club in clubs:
+        fields = [
+            club.get("nameVi") or "",
+            club.get("nameEn") or "",
+            club.get("location") or "",
+            club.get("address") or "",
+            club.get("district", {}).get("districtName", "") or "",
+            club.get("city", {}).get("cityName", "") or "",
+        ]
+        field_matches = False
+        for field in fields:
+            field_lower = field.lower()
+            if not field_lower:
+                continue
+            if field_lower in query:
+                field_matches = True
+                break
+            if query in field_lower:
+                field_matches = True
+                break
+        if field_matches:
+            results.append(club)
+    return results
 
 
 def generate_club_response(message: str) -> str:
-    normalized_initial = normalize_text(message)
-    wants_inactive_initial = any(keyword in normalized_initial for keyword in INACTIVE_KEYWORDS)
-    all_clubs = clubs_client.fetch_clubs()
-    clubs = all_clubs if wants_inactive_initial else clubs_client.get_active_clubs()
+    clubs = clubs_client.get_active_clubs()
 
     if not clubs:
         return "Xin lỗi, hiện chưa có dữ liệu về các chi nhánh trong hệ thống."
 
-    normalized = normalize_text(message)
-    is_count_query = any(keyword in normalized for keyword in COUNT_KEYWORDS)
-
-    club = find_club_by_name(message, all_clubs)
-    if club:
-        context_blocks = build_context_from_clubs([club])
-        return generate_answer_from_context(message, context_blocks)
-
-    requested_district = detect_district_from_message(message)
-    if requested_district:
-        district_clubs = find_clubs_by_district(requested_district, clubs)
-        if district_clubs:
-            contexts = build_context_from_clubs(district_clubs)
-            contexts.append(build_counts_context(requested_district, district_clubs))
-            return generate_answer_from_context(message, contexts)
-        return build_no_data_message(requested_district, "district", clubs)
-
-    requested_city = detect_city_from_message(message)
-    if requested_city:
-        city_clubs = []
-        target_norm = normalize_text(requested_city)
-        for club in clubs:
-            club_city = club.get("city", {}).get("cityName", "")
-            club_location = club.get("location", "")
-            if normalize_text(club_city) == target_norm or target_norm in normalize_text(club_location):
-                city_clubs.append(club)
-        if city_clubs:
-            contexts = build_context_from_clubs(city_clubs)
-            contexts.append(build_counts_context(requested_city, city_clubs))
-            return generate_answer_from_context(message, contexts)
-        return build_no_data_message(requested_city, "city", clubs)
-
-    if is_count_query:
-        overview_context = build_overall_context(clubs)
-        return generate_answer_from_context(message, [overview_context], extra_guidance="Nhấn mạnh số lượng theo từng khu vực.")
-
-    semantic_results = semantic_search(message, top_k=MAX_CONTEXT_CLUBS)
-    if semantic_results:
-        semantic_clubs = [item.get("raw") for item in semantic_results if item.get("raw")]
-        contexts = build_context_from_clubs(semantic_clubs)
-        return generate_answer_from_context(message, contexts)
-
-    if any(keyword in normalized for keyword in ADDRESS_KEYWORDS):
-        return (
-            "Bạn muốn biết địa chỉ của chi nhánh nào ạ?\n\n"
-            "Bạn có thể cung cấp:\n"
-            "- Tên chi nhánh (ví dụ: Hoàng Văn Thụ, Nguyễn Chí Thanh)\n"
-            "- Hoặc khu vực mong muốn (ví dụ: Quận 3, Tân Bình, Gò Vấp)\n"
-            "- Hoặc thành phố (ví dụ: Hồ Chí Minh, Đà Nẵng)"
+    keyword_matches = search_clubs_by_keyword(message, clubs)
+    if keyword_matches:
+        label = (
+            keyword_matches[0].get("district", {}).get("districtName")
+            or keyword_matches[0].get("city", {}).get("cityName")
+            or message
+        )
+        contexts = build_context_from_clubs(keyword_matches)
+        contexts.append(build_counts_context(label, keyword_matches))
+        return generate_answer_from_context(
+            message,
+            contexts,
+            extra_guidance="Nhấn mạnh đây là các chi nhánh khớp trực tiếp với nội dung người dùng vừa hỏi.",
         )
 
+    semantic_results: List[Dict] = []
+    try:
+        semantic_results = semantic_search(message, top_k=MAX_CONTEXT_CLUBS)
+    except Exception as exc:
+        print(f"[ClubService] semantic_search failed: {exc}")
+
+    if semantic_results:
+        semantic_clubs = [item.get("raw") for item in semantic_results if item.get("raw")]
+        if semantic_clubs:
+            contexts = build_context_from_clubs(semantic_clubs)
+            return generate_answer_from_context(message, contexts)
+
     overview_context = build_overall_context(clubs)
-    return generate_answer_from_context(message, [overview_context], extra_guidance="Nếu khách cần chi tiết hơn, hãy gợi ý họ nêu rõ khu vực.")
+    no_data_message = build_no_data_message("khu vực bạn quan tâm", "city", clubs)
+    return generate_answer_from_context(
+        message,
+        [overview_context, no_data_message],
+        extra_guidance="Nếu khách cần cụ thể hơn, hãy đề nghị họ mô tả rõ khu vực hoặc tên chi nhánh.",
+    )
 
