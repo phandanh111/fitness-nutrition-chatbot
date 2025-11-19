@@ -51,7 +51,24 @@ pip install -r requirements.txt
 
 # Cập nhật semantic index cho clubs
 echo "🧠 Cập nhật dữ liệu tìm kiếm (RAG)..."
-python scripts/build_club_index.py
+NEED_FORCE_REBUILD=false
+CHROMA_DB_PATH="data/rag/chroma/chroma.sqlite3"
+
+if [ "$FORCE_RAG_REBUILD" = "true" ]; then
+    NEED_FORCE_REBUILD=true
+elif [ ! -f "$CHROMA_DB_PATH" ]; then
+    echo "ℹ️  ChromaDB chưa tồn tại, sẽ build mới."
+    NEED_FORCE_REBUILD=true
+fi
+
+if [ "$NEED_FORCE_REBUILD" = "true" ]; then
+    echo "   → Rebuild toàn bộ RAG index..."
+    python scripts/build_club_index.py --force
+else
+    echo "   → Cập nhật RAG index hiện có..."
+    python scripts/build_club_index.py
+fi
+
 if [ $? -ne 0 ]; then
     echo "❌ Lỗi khi xây dựng RAG index. Vui lòng kiểm tra kết nối internet và thử lại."
     deactivate
