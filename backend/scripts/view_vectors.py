@@ -19,8 +19,8 @@ except ImportError:
 from rag.club_rag import (
     CHROMA_DIR,
     COLLECTION_NAME,
-    FastEmbedFunction,
     _get_collection,
+    VietnameseEmbeddingFunction,
 )
 
 def view_vectors():

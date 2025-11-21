@@ -10,7 +10,8 @@ from typing import Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
-from fastembed import TextEmbedding
+from sentence_transformers import SentenceTransformer
+from pyvi.ViTokenizer import tokenize
 
 try:
     from chromadb.errors import InvalidCollectionException as ChromaInvalidCollection
@@ -26,7 +27,7 @@ COLLECTION_NAME = "club_documents"
 
 DEFAULT_EMBED_MODEL = os.getenv(
     "CLUB_EMBED_MODEL",
-    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "dangvantuan/vietnamese-embedding",
 )
 MAX_CLUBS_TO_EMBED = int(os.getenv("CLUB_EMBED_LIMIT", "2000"))
 
@@ -38,14 +39,30 @@ os.environ.setdefault("HF_HOME", str(HF_CACHE_DIR))
 os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE_DIR))
 
 _chroma_client: chromadb.Client | None = None
-_embedding_model = TextEmbedding(model_name=DEFAULT_EMBED_MODEL)
+_embedding_model: SentenceTransformer | None = None
 
 
-class FastEmbedFunction:
-    """Adapter để dùng FastEmbed với ChromaDB (tuân thủ API embed_documents/embed_query)."""
+def _get_embedding_model() -> SentenceTransformer:
+    """Lazy load embedding model."""
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer(DEFAULT_EMBED_MODEL)
+    return _embedding_model
+
+
+class VietnameseEmbeddingFunction:
+    """Adapter để dùng SentenceTransformer với Vietnamese tokenization cho ChromaDB."""
+
+    def _tokenize_texts(self, texts: List[str]) -> List[str]:
+        """Tokenize Vietnamese texts."""
+        return [tokenize(text) for text in texts]
 
     def _embed(self, texts: List[str]) -> List[List[float]]:
-        return list(_embedding_model.embed(texts))
+        """Embed texts với Vietnamese tokenization."""
+        model = _get_embedding_model()
+        tokenized_texts = self._tokenize_texts(texts)
+        embeddings = model.encode(tokenized_texts, convert_to_numpy=True)
+        return embeddings.tolist()
 
     def __call__(self, input: List[str]) -> List[List[float]]:  # legacy API
         return self._embed(input)
@@ -58,7 +75,7 @@ class FastEmbedFunction:
         return self._embed(queries)
 
     def name(self) -> str:
-        return f"fastembed:{DEFAULT_EMBED_MODEL}"
+        return f"sentence-transformers:{DEFAULT_EMBED_MODEL}"
 
 
 def _ensure_data_dir() -> None:
@@ -88,7 +105,7 @@ def _get_collection(reset: bool = False):
     return client.get_or_create_collection(
         name=COLLECTION_NAME,
         metadata={"hnsw:space": "cosine"},
-        embedding_function=FastEmbedFunction(),
+        embedding_function=VietnameseEmbeddingFunction(),
     )
 
 
