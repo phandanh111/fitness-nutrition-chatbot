@@ -1,7 +1,7 @@
 import React from "react";
 import ChatBox from "./components/ChatBox";
 import ThemeSwitcher from "./components/ThemeSwitcher";
-import { Target, Zap, TrendingUp, Heart } from "lucide-react";
+import { Target } from "lucide-react";
 
 function App() {
   return (
@@ -25,20 +25,6 @@ function App() {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden md:flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-fitness-500 dark:text-fitness-400" />
-                  <span>Tư vấn cá nhân hóa</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-primary-500 dark:text-primary-400" />
-                  <span>Tính toán chính xác</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-red-500 dark:text-red-400" />
-                  <span>Miễn phí</span>
-                </div>
-              </div>
               <ThemeSwitcher />
             </div>
           </div>
@@ -48,71 +34,6 @@ function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Sidebar - Features */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 transition-colors duration-200">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Tính năng chính
-              </h2>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-fitness-100 dark:bg-fitness-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Target className="w-4 h-4 text-fitness-600 dark:text-fitness-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">
-                      Tư vấn cá nhân
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Dựa trên thông tin cá nhân của bạn
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <TrendingUp className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">
-                      Tính toán TDEE
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Sử dụng công thức khoa học chính xác
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Zap className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">
-                      Thực đơn chi tiết
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Gợi ý bữa ăn với calo và macro
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-r from-fitness-500 to-primary-500 rounded-2xl p-6 text-white">
-              <h3 className="font-semibold mb-2">Bắt đầu ngay!</h3>
-              <p className="text-sm opacity-90 mb-4">
-                Chia sẻ thông tin cơ bản để nhận tư vấn dinh dưỡng phù hợp nhất.
-              </p>
-              <div className="text-xs space-y-1 opacity-80">
-                <p>• Chiều cao & cân nặng</p>
-                <p>• Tuổi & giới tính</p>
-                <p>• Mục tiêu tập luyện</p>
-                <p>• Số buổi tập/tuần</p>
-              </div>
-            </div>
-          </div>
-
           {/* Chat Interface */}
           <div className="lg:col-span-3">
             <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 h-[700px] lg:h-[800px] transition-colors duration-200">
@@ -121,24 +42,6 @@ function App() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      {/* <footer className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 mt-16 transition-colors duration-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-            <p className="mb-2">
-              <strong className="text-gray-900 dark:text-white">
-                The New Gym AI
-              </strong>{" "}
-              - Chuyên gia dinh dưỡng thể hình thông minh
-            </p>
-            <p className="text-xs">
-              ⚠️ Lưu ý: Thông tin chỉ mang tính chất tham khảo. Vui lòng tham
-              khảo ý kiến chuyên gia y tế cho các vấn đề sức khỏe cụ thể.
-            </p>
-          </div>
-        </div>
-      </footer> */}
     </div>
   );
 }
