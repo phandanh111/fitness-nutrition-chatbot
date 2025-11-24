@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from utils.ollama_client import ollama_client
 from services.club_service import generate_club_response, is_club_related_query
+from services.exercise_service import generate_exercise_response, is_exercise_related_query
 from utils.clubs_client import clubs_client
 from services.llm_service import get_ai_response
 
@@ -88,16 +89,37 @@ async def chat(chat_message: ChatMessage):
         # Load system prompt
         system_prompt = load_system_prompt()
         
-        # Check if query is about clubs
-        is_club_query = is_club_related_query(message)
+        # Check if query is about exercises (kiểm tra trước vì có thể nhầm với clubs)
+        try:
+            is_exercise_query = is_exercise_related_query(message)
+            if is_exercise_query:
+                exercise_response_text = generate_exercise_response(message)
+                if exercise_response_text:
+                    return ChatResponse(
+                        response=exercise_response_text,
+                        session_id=session_id
+                    )
+        except Exception as e:
+            print(f"[Chat] Error in exercise query: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to try clubs or general LLM
         
-        if is_club_query:
-            club_response_text = generate_club_response(message)
-            if club_response_text:
-                return ChatResponse(
-                    response=club_response_text,
-                    session_id=session_id
-                )
+        # Check if query is about clubs
+        try:
+            is_club_query = is_club_related_query(message)
+            if is_club_query:
+                club_response_text = generate_club_response(message)
+                if club_response_text:
+                    return ChatResponse(
+                        response=club_response_text,
+                        session_id=session_id
+                    )
+        except Exception as e:
+            print(f"[Chat] Error in club query: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to general LLM
         
         # Prepare messages for AI (generic questions)
         messages = [{"role": "user", "content": message}]
@@ -111,7 +133,10 @@ async def chat(chat_message: ChatMessage):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[Chat] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/clubs")
 async def get_clubs(refresh: bool = False):

@@ -70,8 +70,11 @@ class VietnameseEmbeddingFunction:
     def embed_documents(self, documents: List[str]) -> List[List[float]]:
         return self._embed(documents)
 
-    def embed_query(self, query: str | List[str]) -> List[List[float]]:
-        queries = [query] if isinstance(query, str) else query
+    def embed_query(self, query: str | List[str] = None, input: str | List[str] = None) -> List[List[float]]:
+        queries = input if input is not None else query
+        if queries is None:
+            raise ValueError("Either 'query' or 'input' must be provided")
+        queries = [queries] if isinstance(queries, str) else queries
         return self._embed(queries)
 
     def name(self) -> str:

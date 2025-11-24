@@ -8,16 +8,9 @@ from typing import Dict, List, Optional, Tuple
 from utils.clubs_client import clubs_client
 from rag.club_rag import semantic_search
 from services.llm_service import get_ai_response
+from constants.rag_prompts import get_rag_system_prompt
 
 MAX_CONTEXT_CLUBS = int(os.getenv("CLUB_CONTEXT_LIMIT", "4"))
-RAG_SYSTEM_PROMPT = (
-    "Bạn là AI Assistant của The New Gym với phong cách trò chuyện tự nhiên, thân thiện, giống như một tư vấn viên đang nói chuyện trực tiếp với khách. "
-    "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong ngữ cảnh được cung cấp. "
-    "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về chi nhánh, địa chỉ, tên, hoặc bất kỳ thông tin nào khác. "
-    "Nếu ngữ cảnh không chứa thông tin về chi nhánh được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy chi nhánh nào ở [khu vực]' và KHÔNG được liệt kê các chi nhánh không có trong ngữ cảnh. "
-    "Luôn trả lời bằng tiếng Việt, dùng đại từ thân mật (ví dụ: 'mình', 'bạn'), câu văn mềm mại, ngắn gọn, hạn chế lặp lại. "
-    "Mỗi chi nhánh nên bao gồm tên (ưu tiên tiếng Việt), địa chỉ và link ở dạng [Tên](URL) - CHỈ khi thông tin này có trong ngữ cảnh."
-)
 
 
 def split_clubs_by_status(clubs: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
@@ -165,12 +158,13 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         f"LƯU Ý CUỐI CÙNG: Nếu câu hỏi về một khu vực cụ thể (ví dụ: Thủ Đức, Quận X) nhưng trong ngữ cảnh không có chi nhánh nào ở khu vực đó, bạn PHẢI trả lời 'Mình chưa tìm thấy chi nhánh nào ở [khu vực đó]' và KHÔNG được liệt kê các chi nhánh ở khu vực khác như thể chúng ở khu vực được hỏi."
     )
     messages = [{"role": "user", "content": prompt}]
-    return get_ai_response(messages, RAG_SYSTEM_PROMPT)
+    return get_ai_response(messages, get_rag_system_prompt("clubs"))
 
 
-def is_club_related_query(_: str) -> bool:
-    """Dự án chỉ phục vụ thông tin chi nhánh → mọi câu đều xử lý bằng RAG."""
-    return True
+def is_club_related_query(message: str) -> bool:
+    """Phát hiện câu hỏi về chi nhánh/clubs bằng semantic search."""
+    from utils.query_classifier import is_club_query
+    return is_club_query(message)
 
 
 def search_clubs_by_keyword(message: str, clubs: List[Dict]) -> List[Dict]:
