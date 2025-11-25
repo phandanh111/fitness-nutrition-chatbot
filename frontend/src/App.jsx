@@ -32,13 +32,10 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Chat Interface */}
-          <div className="lg:col-span-3">
-            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 h-[700px] lg:h-[800px] transition-colors duration-200">
-              <ChatBox />
-            </div>
+      <main className="flex items-start justify-center min-h-[calc(100vh-80px)] px-4 sm:px-6 lg:px-8 pt-4 pb-8">
+        <div className="w-full max-w-4xl">
+          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 h-[750px] lg:h-[900px] transition-colors duration-200">
+            <ChatBox />
           </div>
         </div>
       </main>
