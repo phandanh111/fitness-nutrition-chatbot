@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Dict, List, Optional, Tuple
 
 from utils.clubs_client import clubs_client
@@ -11,6 +12,15 @@ from services.llm_service import get_ai_response
 from constants.rag_prompts import get_rag_system_prompt
 
 MAX_CONTEXT_CLUBS = int(os.getenv("CLUB_CONTEXT_LIMIT", "4"))
+
+COUNT_QUERY_PATTERNS = [
+    r"bao nhiêu",
+    r"tổng\\s*(cộng)?",
+    r"có\\s*mấy",
+    r"tổng số",
+    r"bao nhiêu (club|chi nhánh|phòng)",
+    r"mấy chi nhánh",
+]
 
 
 def split_clubs_by_status(clubs: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
@@ -89,6 +99,22 @@ def build_overall_context(clubs: List[Dict]) -> str:
         if active:
             lines.append(f"- {city_name}: {len(active)} chi nhánh hoạt động")
     return "\n".join(lines)
+
+
+def build_total_counts_context(clubs: List[Dict]) -> str:
+    active_clubs, inactive_clubs = split_clubs_by_status(clubs)
+    lines = [
+        f"Tổng số chi nhánh đang hoạt động: {len(active_clubs)}",
+    ]
+    if inactive_clubs:
+        lines.append(f"Tổng số chi nhánh tạm đóng: {len(inactive_clubs)}")
+    lines.append("Dữ liệu này được tính trực tiếp từ file clubs.md.")
+    return "\n".join(lines)
+
+
+def is_count_query(message: str) -> bool:
+    lower = message.lower()
+    return any(re.search(pattern, lower) for pattern in COUNT_QUERY_PATTERNS)
 
 
 def build_no_data_message(label: str, level: str, clubs: List[Dict]) -> str:
@@ -205,6 +231,15 @@ def generate_club_response(message: str) -> str:
     if not clubs:
         return "Xin lỗi, hiện chưa có dữ liệu về các chi nhánh trong hệ thống."
 
+    if is_count_query(message):
+        total_context = build_total_counts_context(clubs)
+        overview_context = build_overall_context(clubs)
+        return generate_answer_from_context(
+            message,
+            [total_context, overview_context],
+            extra_guidance="Trả lời rõ ràng tổng số chi nhánh đang hoạt động và phân bố theo khu vực.",
+        )
+
     keyword_matches = search_clubs_by_keyword(message, clubs)
     if keyword_matches:
         label = (
@@ -214,6 +249,7 @@ def generate_club_response(message: str) -> str:
         )
         contexts = build_context_from_clubs(keyword_matches)
         contexts.append(build_counts_context(label, keyword_matches))
+        contexts.append(build_overall_context(clubs))
         return generate_answer_from_context(
             message,
             contexts,
@@ -230,9 +266,9 @@ def generate_club_response(message: str) -> str:
         semantic_clubs = [item.get("raw") for item in semantic_results if item.get("raw")]
         if semantic_clubs:
             contexts = build_context_from_clubs(semantic_clubs)
+            contexts.append(build_overall_context(clubs))
             return generate_answer_from_context(message, contexts)
 
-    overview_context = build_overall_context(clubs)
     no_data_message = build_no_data_message("khu vực bạn quan tâm", "city", clubs)
     return generate_answer_from_context(
         message,

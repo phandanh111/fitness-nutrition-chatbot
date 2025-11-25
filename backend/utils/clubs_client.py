@@ -1,18 +1,19 @@
 """
-Client để lấy thông tin clubs từ API
+Client đọc thông tin clubs từ file markdown (thay cho API).
 """
 
 import os
-import requests
 from typing import List, Dict, Optional
+from pathlib import Path
 from datetime import datetime
 
+from rag.club_rag import _parse_clubs_from_markdown, CLUBS_MD_PATH
+
 class ClubsClient:
-    def __init__(self, base_url: str = "https://stg-mobile.gateway.thenewgym.vn"):
-        self.base_url = base_url
-        self.api_url = f"{base_url}/api/v1/general/clubs"
-        self._cache = None
-        self._cache_timestamp = None
+    def __init__(self, markdown_path: Optional[Path] = None):
+        self._markdown_path = Path(markdown_path or CLUBS_MD_PATH)
+        self._cache: Optional[List[Dict]] = None
+        self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl = 300  # Cache 5 phút
         self._debug = os.getenv("CLUBS_DEBUG", "false").lower() == "true"
         self._last_source = "none"
@@ -30,61 +31,37 @@ class ClubsClient:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"[ClubsClient][{timestamp}] {message}")
     
+    def _load_from_markdown(self) -> List[Dict]:
+        """Đọc dữ liệu từ file markdown."""
+        try:
+            clubs = _parse_clubs_from_markdown(self._markdown_path)
+            self._last_source = "markdown"
+            self._log(f"Loaded {len(clubs)} clubs from markdown: {self._markdown_path}")
+            return clubs
+        except FileNotFoundError:
+            self._last_source = "markdown_missing"
+            self._log(f"Markdown file không tồn tại: {self._markdown_path}")
+            return []
+        except Exception as exc:
+            self._last_source = "markdown_error"
+            self._log(f"Không thể đọc markdown: {exc}")
+            return []
+
     def fetch_clubs(self, use_cache: bool = True) -> List[Dict]:
         """
-        Lấy danh sách clubs từ API
-        
-        Args:
-            use_cache: Có sử dụng cache không
-        
-        Returns:
-            Danh sách clubs
+        Lấy danh sách clubs từ markdown (hoặc cache).
         """
-        # Kiểm tra cache nếu được yêu cầu
         if use_cache and self._is_cache_valid():
             self._last_source = "cache"
-            self._log(f"Using cached clubs data (count={len(self._cache) if self._cache else 0})")
-            return self._cache
-        
-        self._log("Fetching clubs from API...")
+            self._log(
+                f"Using cached clubs data (count={len(self._cache) if self._cache else 0})"
+            )
+            return self._cache or []
 
-        try:
-            response = requests.get(self.api_url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Kiểm tra cấu trúc response
-            if data.get("code") == 1010 and "data" in data:
-                clubs = data["data"]
-                # Lưu vào cache
-                self._cache = clubs
-                self._cache_timestamp = datetime.now()
-                self._last_source = "api"
-                self._log(f"Fetched {len(clubs)} clubs from API and cached the result")
-                return clubs
-            else:
-                self._last_source = "unexpected_response"
-                self._log("API response does not contain expected data; returning empty list")
-                return []
-        except requests.exceptions.RequestException as e:
-            self._log(f"API request failed: {e}")
-            # Nếu có lỗi nhưng có cache, trả về cache
-            if self._cache is not None:
-                self._last_source = "cache_error"
-                self._log("Returning cached clubs data due to API error")
-                return self._cache
-            self._last_source = "error"
-            self._log("No cached clubs available; returning empty list")
-            return []
-        except Exception as e:
-            self._log(f"Unexpected error: {e}")
-            if self._cache is not None:
-                self._last_source = "cache_error"
-                self._log("Returning cached clubs data due to unexpected error")
-                return self._cache
-            self._last_source = "error"
-            self._log("No cached clubs available; returning empty list")
-            return []
+        clubs = self._load_from_markdown()
+        self._cache = clubs
+        self._cache_timestamp = datetime.now()
+        return clubs
     
     def get_club_by_id(self, club_id: int) -> Optional[Dict]:
         """Lấy thông tin club theo ID"""

@@ -122,7 +122,17 @@ async def chat(chat_message: ChatMessage):
             # Continue to general LLM
         
         # Prepare messages for AI (generic questions)
-        messages = [{"role": "user", "content": message}]
+        vietnamese_reminder = (
+            "VUI LÒNG CHỈ TRẢ LỜI BẰNG TIẾNG VIỆT. "
+            "Nếu lỡ trả lời bằng ngôn ngữ khác, bạn phải xin lỗi và trả lời lại bằng tiếng Việt. "
+            "Đây là câu hỏi của khách:"
+        )
+        messages = [
+            {
+                "role": "user",
+                "content": f"{vietnamese_reminder}\n\n{message}",
+            }
+        ]
         
         # Get AI response
         ai_response = get_ai_response(messages, system_prompt)
