@@ -1,94 +1,131 @@
-"""Query classifier dùng semantic search để phân loại câu hỏi tự động."""
+"""Async Query Classifier using semantic similarity scores."""
 
 from __future__ import annotations
+import logging
+import math
+from typing import Literal, List, Dict
 
-from typing import Literal, Optional
+# Semantically compatible async methods
+from rag.club_rag import async_semantic_search as club_search
+from rag.exercise_rag import async_semantic_search as exercise_search
 
-from rag.club_rag import semantic_search as club_semantic_search
-from rag.exercise_rag import semantic_search as exercise_semantic_search
+logger = logging.getLogger("QueryClassifier")
+logger.setLevel(logging.DEBUG)  # DEBUG logging
 
 
-def classify_query(message: str, top_k: int = 3, max_score: float = 0.95) -> Literal["clubs", "exercises", "general"]:
+# ---------------------------
+#   Utility: Score Extractor
+# ---------------------------
+def extract_scores(results: List[Dict]) -> tuple[float, float]:
+    """Return (best_score, avg_score) given list of results."""
+    if not results:
+        return 1.0, 1.0
+
+    scores = [r.get("score", 1.0) for r in results]
+    best = min(scores)
+    avg = sum(scores) / len(scores)
+
+    return best, avg
+
+
+# ---------------------------
+#   Utility: Dynamic Threshold
+# ---------------------------
+def dynamic_threshold(message: str, base: float = 0.90) -> float:
     """
-    Phân loại câu hỏi bằng cách so sánh semantic search scores giữa clubs và exercises.
-    Không cần keywords, hoàn toàn dựa vào embeddings.
-    
-    Args:
-        message: Câu hỏi của người dùng
-        top_k: Số lượng kết quả top để so sánh
-        max_score: Score tối đa để chấp nhận (score > max_score → quá xa, không phù hợp)
-    
-    Returns:
-        "clubs" nếu câu hỏi liên quan đến clubs
-        "exercises" nếu câu hỏi liên quan đến exercises
-        "general" nếu không rõ ràng hoặc không có kết quả
+    Tự động tối ưu threshold:
+    - Query ngắn/không rõ: threshold thấp → strict hơn.
+    - Query dài/rõ ràng: threshold cao → tolerant hơn.
     """
+
+    length = len(message.split())
+    if length <= 3:
+        return base - 0.10      # Query rất ngắn → khó phân loại → cần strict hơn
+    if length <= 7:
+        return base - 0.05      # Query ngắn vừa
+    return base                 # Query dài → nhiều thông tin → threshold bình thường
+
+
+# ---------------------------
+#    Main Classifier Async
+# ---------------------------
+async def classify_query(
+    message: str,
+    top_k: int = 3,
+) -> Literal["clubs", "exercises", "general"]:
+
     if not message or not message.strip():
         return "general"
-    
-    # Thử semantic search cho cả hai collections
-    club_results = []
-    exercise_results = []
-    
-    try:
-        club_results = club_semantic_search(message, top_k=top_k)
-    except Exception as e:
-        print(f"[QueryClassifier] Club search failed: {e}")
-    
-    try:
-        exercise_results = exercise_semantic_search(message, top_k=top_k)
-    except Exception as e:
-        print(f"[QueryClassifier] Exercise search failed: {e}")
-    
-    # Nếu không có kết quả nào, trả về general
+
+    # Threshold tùy duyệt theo query
+    max_score = dynamic_threshold(message)
+    logger.debug(f"[Classifier] Using dynamic threshold = {max_score:.3f}")
+
+    # Run 2 searches concurrently (tăng hiệu suất)
+    import asyncio
+    club_task = asyncio.create_task(club_search(message, top_k=top_k))
+    exercise_task = asyncio.create_task(exercise_search(message, top_k=top_k))
+
+    club_results, exercise_results = await asyncio.gather(
+        club_task, exercise_task, return_exceptions=False
+    )
+
+    logger.debug(f"[Search] club_results={club_results}")
+    logger.debug(f"[Search] exercise_results={exercise_results}")
+
+    # If both empty -> general
     if not club_results and not exercise_results:
+        logger.debug("[Classifier] Both results empty → general")
         return "general"
-    
-    # Tính best score và average score cho mỗi collection
-    best_club_score = min((r.get("score") or 1.0 for r in club_results), default=1.0) if club_results else 1.0
-    best_exercise_score = min((r.get("score") or 1.0 for r in exercise_results), default=1.0) if exercise_results else 1.0
-    
-    avg_club_score = sum((r.get("score") or 1.0 for r in club_results)) / len(club_results) if club_results else 1.0
-    avg_exercise_score = sum((r.get("score") or 1.0 for r in exercise_results)) / len(exercise_results) if exercise_results else 1.0
-    
-    # Nếu chỉ có một loại kết quả
+
+    # Extract scores
+    club_best, club_avg = extract_scores(club_results)
+    ex_best, ex_avg = extract_scores(exercise_results)
+
+    logger.debug(
+        f"[Scores] Club(best={club_best:.3f}, avg={club_avg:.3f}) | "
+        f"Exercise(best={ex_best:.3f}, avg={ex_avg:.3f})"
+    )
+
+    # Both irrelevant (above threshold)
+    if club_best > max_score and ex_best > max_score:
+        logger.debug("[Classifier] Both above threshold → general")
+        return "general"
+
+    # If one empty
     if club_results and not exercise_results:
-        return "clubs" if best_club_score < max_score else "general"
-    
+        return "clubs" if club_best < max_score else "general"
+
     if exercise_results and not club_results:
-        return "exercises" if best_exercise_score < max_score else "general"
-    
-    # Nếu cả hai đều có score quá cao → general
-    if best_club_score > max_score and best_exercise_score > max_score:
-        return "general"
-    
-    # So sánh relative: nếu một cái tốt hơn đáng kể (chênh lệch > 20% hoặc > 0.15)
-    score_diff = abs(best_club_score - best_exercise_score)
-    relative_diff = score_diff / max(best_club_score, best_exercise_score, 0.01)
-    
-    # Nếu chênh lệch đáng kể (> 0.15 hoặc > 20%), chọn cái tốt hơn
-    if score_diff > 0.15 or relative_diff > 0.2:
-        if best_club_score < best_exercise_score:
-            return "clubs"
-        else:
-            return "exercises"
-    
-    # Nếu scores gần nhau, so sánh average score
-    if avg_club_score < avg_exercise_score:
+        return "exercises" if ex_best < max_score else "general"
+
+    # Comparative score logic
+    diff = abs(club_best - ex_best)
+    rel = diff / max(min(club_best, ex_best), 0.01)
+
+    logger.debug(f"[Compare] diff={diff:.3f}, relative={rel:.3f}")
+
+    # Strong difference
+    if diff > 0.12 or rel > 0.18:
+        result = "clubs" if club_best < ex_best else "exercises"
+        logger.debug(f"[Classifier] Strong difference → {result}")
+        return result
+
+    # Otherwise compare averages
+    if club_avg < ex_avg:
         return "clubs"
-    elif avg_exercise_score < avg_club_score:
+    if ex_avg < club_avg:
         return "exercises"
-    else:
-        # Nếu vẫn bằng nhau, chọn cái có best score tốt hơn
-        return "clubs" if best_club_score <= best_exercise_score else "exercises"
+
+    # Final fallback
+    return "clubs" if club_best <= ex_best else "exercises"
 
 
-def is_club_query(message: str) -> bool:
-    """Kiểm tra xem câu hỏi có phải về clubs không."""
-    return classify_query(message) == "clubs"
+# ------------------------------------
+#   Helper boolean check functions
+# ------------------------------------
+async def is_club_query(message: str) -> bool:
+    return (await classify_query(message)) == "clubs"
 
-
-def is_exercise_query(message: str) -> bool:
-    """Kiểm tra xem câu hỏi có phải về exercises không."""
-    return classify_query(message) == "exercises"
-
+async def is_exercise_query(message: str) -> bool:
+    return (await classify_query(message)) == "exercises"
