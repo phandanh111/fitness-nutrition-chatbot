@@ -21,7 +21,8 @@ if ! ollama list | grep -q "llama3:8b"; then
 fi
 
 # Khởi động Ollama service
-if ! pgrep -x "ollama" > /dev/null; then
+# Kiểm tra cross-platform: pgrep hoạt động trên cả macOS và Linux
+if ! pgrep -x "ollama" > /dev/null 2>&1; then
     echo "🔄 Khởi động Ollama service..."
     ollama serve &
     OLLAMA_PID=$!
@@ -39,15 +40,44 @@ fi
 
 # Cài đặt backend dependencies
 echo "📦 Cài đặt backend dependencies..."
-cd backend
+# Lưu thư mục gốc để quay lại sau (tương thích với cả macOS và Linux)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/backend"
 
 if [ ! -d "venv" ]; then
     echo "🔧 Tạo virtual environment..."
     python3 -m venv venv
 fi
 
+# Sử dụng đường dẫn tuyệt đối đến python và pip trong venv
+# Tương thích với cả macOS và Linux (cả hai đều dùng venv/bin/)
+BACKEND_DIR="$(pwd)"
+VENV_PYTHON="$BACKEND_DIR/venv/bin/python"
+VENV_PIP="$BACKEND_DIR/venv/bin/pip"
+
+# Kiểm tra venv đã được tạo đúng chưa
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "❌ Virtual environment chưa được tạo đúng cách."
+    exit 1
+fi
+
+echo "🔧 Kích hoạt virtual environment..."
 source venv/bin/activate
-pip install -r requirements.txt
+
+# Upgrade pip trước khi cài đặt dependencies (tránh lỗi resolver)
+echo "⬆️  Nâng cấp pip..."
+$VENV_PIP install --upgrade pip setuptools wheel
+
+# Cài đặt dependencies
+echo "📥 Cài đặt Python packages..."
+if ! $VENV_PIP install -r requirements.txt; then
+    echo "❌ Lỗi khi cài đặt dependencies. Đang thử cài đặt lại..."
+    # Thử cài đặt lại với --no-cache-dir
+    if ! $VENV_PIP install --no-cache-dir -r requirements.txt; then
+        echo "❌ Không thể cài đặt dependencies. Vui lòng kiểm tra requirements.txt và thử lại."
+        exit 1
+    fi
+fi
 
 # Cập nhật semantic index cho clubs
 echo "🧠 Cập nhật dữ liệu tìm kiếm (RAG)..."
@@ -63,10 +93,10 @@ fi
 
 if [ "$NEED_FORCE_REBUILD" = "true" ]; then
     echo "   → Rebuild toàn bộ RAG index..."
-    python scripts/build_club_index.py --force
+    $VENV_PYTHON scripts/build_club_index.py --force
 else
     echo "   → Cập nhật RAG index hiện có..."
-    python scripts/build_club_index.py
+    $VENV_PYTHON scripts/build_club_index.py
 fi
 
 if [ $? -ne 0 ]; then
@@ -83,7 +113,7 @@ fi
 
 # Khởi động backend
 echo "🚀 Khởi động backend..."
-python main.py &
+$VENV_PYTHON main.py &
 BACKEND_PID=$!
 echo "🔧 Backend PID: $BACKEND_PID"
 
