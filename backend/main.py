@@ -20,10 +20,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - Cho phép truy cập từ localhost và IP public
+# Lấy danh sách origins từ environment variable hoặc dùng mặc định
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+# Thêm IP public nếu có trong env
+public_ip = os.getenv("PUBLIC_IP")
+if public_ip:
+    cors_origins.extend([
+        f"http://{public_ip}:3000",
+        f"http://{public_ip}",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -111,6 +111,36 @@ if [ ! -f ".env" ]; then
     cp env.example .env
 fi
 
+# Lấy IP public và thêm vào .env nếu chưa có
+echo "🌐 Lấy IP public..."
+PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "")
+if [ -n "$PUBLIC_IP" ]; then
+    echo "   → IP Public: $PUBLIC_IP"
+    # Kiểm tra xem PUBLIC_IP đã có trong .env chưa
+    if ! grep -q "^PUBLIC_IP=" .env 2>/dev/null; then
+        echo "PUBLIC_IP=$PUBLIC_IP" >> .env
+        echo "   ✅ Đã thêm PUBLIC_IP vào .env"
+    else
+        # Cập nhật IP nếu đã có (tương thích với cả macOS và Linux)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed -i '' "s|^PUBLIC_IP=.*|PUBLIC_IP=$PUBLIC_IP|" .env
+        else
+            # Linux
+            sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$PUBLIC_IP|" .env
+        fi
+        echo "   ✅ Đã cập nhật PUBLIC_IP trong .env"
+    fi
+    # Cập nhật CORS_ORIGINS nếu chưa có
+    if ! grep -q "^CORS_ORIGINS=" .env 2>/dev/null; then
+        CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000,http://$PUBLIC_IP:3000"
+        echo "CORS_ORIGINS=$CORS_ORIGINS" >> .env
+        echo "   ✅ Đã thêm CORS_ORIGINS vào .env"
+    fi
+else
+    echo "   ⚠️  Không thể lấy IP public. Bạn có thể set thủ công trong .env"
+fi
+
 # Khởi động backend
 echo "🚀 Khởi động backend..."
 $VENV_PYTHON main.py &
@@ -142,11 +172,23 @@ npm start &
 FRONTEND_PID=$!
 echo "🎨 Frontend PID: $FRONTEND_PID"
 
+# Hiển thị thông tin truy cập
 echo ""
 echo "🎉 Chatbot đã khởi động thành công!"
-echo "📱 Frontend: http://localhost:3000"
-echo "🔧 Backend: http://localhost:8000"
-echo "🦙 Ollama: http://localhost:11434"
+echo ""
+echo "📍 Truy cập local:"
+echo "   📱 Frontend: http://localhost:3000"
+echo "   🔧 Backend: http://localhost:8000"
+echo "   🦙 Ollama: http://localhost:11434"
+echo ""
+if [ -n "$PUBLIC_IP" ]; then
+    echo "🌐 Truy cập từ bên ngoài (IP Public: $PUBLIC_IP):"
+    echo "   📱 Frontend: http://$PUBLIC_IP:3000"
+    echo "   🔧 Backend API: http://$PUBLIC_IP:8000"
+    echo "   📖 API Docs: http://$PUBLIC_IP:8000/docs"
+    echo ""
+    echo "⚠️  Lưu ý: Đảm bảo firewall/security group đã mở port 3000 và 8000"
+fi
 echo ""
 echo "Để dừng chatbot, nhấn Ctrl+C"
 
