@@ -9,6 +9,11 @@ from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
 from utils.clubs_client import clubs_client
 from services.llm_service import get_ai_response
+from services.conversation_service import (
+    get_history as get_conversation_history,
+    record_turn as record_conversation_turn,
+    clear_session as clear_conversation_session,
+)
 
 # Load environment variables
 load_dotenv()
@@ -95,6 +100,7 @@ async def chat(chat_message: ChatMessage):
     try:
         session_id = chat_message.session_id
         message = chat_message.message
+        history = get_conversation_history(session_id)
         
         # Load system prompt
         system_prompt = load_system_prompt()
@@ -105,6 +111,7 @@ async def chat(chat_message: ChatMessage):
             if is_exercise_query:
                 exercise_response_text = generate_exercise_response(message)
                 if exercise_response_text:
+                    record_conversation_turn(session_id, message, exercise_response_text)
                     return ChatResponse(
                         response=exercise_response_text,
                         session_id=session_id
@@ -121,6 +128,7 @@ async def chat(chat_message: ChatMessage):
             if is_club_query:
                 club_response_text = generate_club_response(message)
                 if club_response_text:
+                    record_conversation_turn(session_id, message, club_response_text)
                     return ChatResponse(
                         response=club_response_text,
                         session_id=session_id
@@ -137,15 +145,17 @@ async def chat(chat_message: ChatMessage):
             "Nếu lỡ trả lời bằng ngôn ngữ khác, bạn phải xin lỗi và trả lời lại bằng tiếng Việt. "
             "Đây là câu hỏi của khách:"
         )
-        messages = [
+        user_content = f"{vietnamese_reminder}\n\n{message}" if not history else message
+        messages = history + [
             {
                 "role": "user",
-                "content": f"{vietnamese_reminder}\n\n{message}",
+                "content": user_content,
             }
         ]
         
         # Get AI response
         ai_response = get_ai_response(messages, system_prompt)
+        record_conversation_turn(session_id, message, ai_response)
         
         return ChatResponse(
             response=ai_response,
@@ -235,6 +245,13 @@ async def clear_clubs_cache():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/sessions/{session_id}")
+async def clear_session(session_id: str):
+    """Xóa lịch sử hội thoại của session hiện tại"""
+    clear_conversation_session(session_id)
+    return {"message": "Session cleared", "session_id": session_id}
 
 
 if __name__ == "__main__":
