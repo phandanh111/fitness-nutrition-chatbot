@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Dict, List, Optional
 
-from rag.exercise_rag import semantic_search
+from rag.exercise_rag import semantic_search, parse_exercises_from_markdown
 from services.llm_service import get_ai_response
 from constants.rag_prompts import get_rag_system_prompt
 
 MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "4"))
+
+COUNT_QUERY_PATTERNS = [
+    r"bao nhiêu",
+    r"tổng\s*(cộng)?",
+    r"có\s*mấy",
+    r"tổng số",
+    r"bao nhiêu (bài tập|exercise)",
+    r"mấy bài tập",
+    r"có bao nhiêu",
+]
 
 
 def build_context_from_exercises(exercises: List[Dict]) -> List[str]:
@@ -18,21 +29,61 @@ def build_context_from_exercises(exercises: List[Dict]) -> List[str]:
     for exercise in exercises[:MAX_CONTEXT_EXERCISES]:
         name = exercise.get("nameVi") or exercise.get("nameEn") or exercise.get("name", "Bài tập")
         muscle_group = exercise.get("muscleGroup", "")
-        description = exercise.get("description", "")
-        benefits = exercise.get("benefits", "")
-        equipment = exercise.get("equipment", "")
+        difficulty = exercise.get("difficulty", "")
+        calories = exercise.get("calories", "")
 
         lines = [f"Bài tập: {name}"]
         if muscle_group:
             lines.append(f"Nhóm cơ: {muscle_group}")
-        if description:
-            lines.append(f"Mô tả: {description}")
-        if benefits:
-            lines.append(f"Lợi ích: {benefits}")
-        if equipment:
-            lines.append(f"Thiết bị: {equipment}")
+        if difficulty:
+            lines.append(f"Độ khó: {difficulty}")
+        if calories:
+            lines.append(f"Kcal tiêu thụ: {calories}")
+        
         contexts.append("\n".join(lines))
     return contexts
+
+
+def get_all_exercises() -> List[Dict]:
+    """Lấy tất cả exercises từ markdown file (không giới hạn)."""
+    try:
+        return parse_exercises_from_markdown()
+    except Exception as exc:
+        print(f"[ExerciseService] Failed to load exercises: {exc}")
+        return []
+
+
+def build_total_counts_context(exercises: List[Dict]) -> str:
+    """Xây dựng context về tổng số bài tập."""
+    total = len(exercises)
+    
+    # Đếm theo độ khó
+    difficulty_counts = {}
+    for ex in exercises:
+        diff = ex.get("difficulty", "").strip()
+        if diff:
+            difficulty_counts[diff] = difficulty_counts.get(diff, 0) + 1
+    
+    lines = [
+        f"Tổng số bài tập: {total}",
+    ]
+    
+    if difficulty_counts:
+        lines.append("\nPhân loại theo độ khó:")
+        for diff, count in sorted(difficulty_counts.items()):
+            lines.append(f"- {diff}: {count} bài tập")
+    
+    lines.append("\nDữ liệu này được tính trực tiếp từ file exercise.md.")
+    return "\n".join(lines)
+
+
+def is_count_query(message: str) -> bool:
+    """Kiểm tra xem câu hỏi có phải về số lượng không."""
+    lower = message.lower()
+    for pattern in COUNT_QUERY_PATTERNS:
+        if re.search(pattern, lower):
+            return True
+    return False
 
 
 def search_exercises_by_keyword(message: str, exercises: List[Dict]) -> List[Dict]:
@@ -48,8 +99,7 @@ def search_exercises_by_keyword(message: str, exercises: List[Dict]) -> List[Dic
             exercise.get("nameEn", ""),
             exercise.get("name", ""),
             exercise.get("muscleGroup", ""),
-            exercise.get("description", ""),
-            exercise.get("equipment", ""),
+            exercise.get("difficulty", ""),
         ]
         field_matches = False
         for field in fields:
@@ -102,6 +152,19 @@ def is_exercise_related_query(message: str) -> bool:
 
 def generate_exercise_response(message: str) -> str:
     """Tạo câu trả lời cho câu hỏi về bài tập."""
+    # Kiểm tra câu hỏi về số lượng
+    if is_count_query(message):
+        all_exercises = get_all_exercises()
+        if not all_exercises:
+            return "Xin lỗi, hiện chưa có dữ liệu về các bài tập trong hệ thống."
+        
+        total_context = build_total_counts_context(all_exercises)
+        return generate_answer_from_context(
+            message,
+            [total_context],
+            extra_guidance="Trả lời rõ ràng tổng số bài tập và phân loại theo độ khó nếu có. KHÔNG liệt kê từng bài tập, chỉ trả lời về số lượng.",
+        )
+    
     # Thử semantic search trước
     semantic_results: List[Dict] = []
     try:

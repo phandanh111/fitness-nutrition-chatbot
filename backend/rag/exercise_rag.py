@@ -113,6 +113,21 @@ def _get_collection(reset: bool = False):
     )
 
 
+def parse_exercises_from_markdown(md_path: Path = None) -> List[Dict]:
+    """
+    Parse exercises từ file markdown (public function).
+    
+    Args:
+        md_path: Đường dẫn đến file markdown. Nếu None, dùng EXERCISE_MD_PATH mặc định.
+    
+    Returns:
+        List[Dict]: Danh sách exercises
+    """
+    if md_path is None:
+        md_path = EXERCISE_MD_PATH
+    return _parse_exercises_from_markdown(md_path)
+
+
 def _parse_exercises_from_markdown(md_path: Path) -> List[Dict]:
     """Parse exercises từ file markdown."""
     if not md_path.exists():
@@ -139,9 +154,8 @@ def _parse_exercises_from_markdown(md_path: Path) -> List[Dict]:
             "nameVi": "",
             "nameEn": "",
             "muscleGroup": "",
-            "description": "",
-            "benefits": "",
-            "equipment": "",
+            "difficulty": "",
+            "calories": "",
         }
 
         # Parse từng dòng
@@ -161,13 +175,11 @@ def _parse_exercises_from_markdown(md_path: Path) -> List[Dict]:
                 exercise_data["nameVi"] = line.replace("Tên tiếng Việt:", "").strip()
             elif line.startswith("Tên tiếng Anh:"):
                 exercise_data["nameEn"] = line.replace("Tên tiếng Anh:", "").strip()
-            elif line.startswith("Mô tả:"):
-                exercise_data["description"] = line.replace("Mô tả:", "").strip()
-            elif line.startswith("Lợi ích:"):
-                exercise_data["benefits"] = line.replace("Lợi ích:", "").strip()
-            elif line.startswith("Thiết bị:"):
-                exercise_data["equipment"] = line.replace("Thiết bị:", "").strip()
-
+            elif line.startswith("Độ khó:"):
+                exercise_data["difficulty"] = line.replace("Độ khó:", "").strip()
+            elif line.startswith("Kcal tiêu thụ:"):
+                exercise_data["calories"] = line.replace("Kcal tiêu thụ:", "").strip()
+               
         exercises.append(exercise_data)
 
     return exercises
@@ -194,20 +206,17 @@ def _build_text_from_exercise(exercise: Dict) -> str:
     if muscle_group:
         parts.append(f"Nhóm cơ: {muscle_group}")
 
-    # Mô tả
-    description = exercise.get("description", "")
-    if description:
-        parts.append(f"Mô tả: {description}")
+    # Độ khó (quan trọng cho việc tìm kiếm bài tập cho người mới)
+    difficulty = exercise.get("difficulty", "")
+    if difficulty:
+        parts.append(f"Độ khó: {difficulty}")
 
-    # Lợi ích
-    benefits = exercise.get("benefits", "")
-    if benefits:
-        parts.append(f"Lợi ích: {benefits}")
+    # Kcal tiêu thụ
+    calories = exercise.get("calories", "")
+    if calories:
+        parts.append(f"Kcal tiêu thụ: {calories}")
 
-    # Thiết bị
-    equipment = exercise.get("equipment", "")
-    if equipment:
-        parts.append(f"Thiết bị: {equipment}")
+    
 
     return "\n".join(parts)
 
@@ -223,7 +232,7 @@ def build_exercise_index(force_refresh: bool = False) -> None:
     collection = _get_collection(reset=True if force_refresh else False)
 
     # Lấy dữ liệu exercises từ markdown
-    exercises = _parse_exercises_from_markdown(EXERCISE_MD_PATH)
+    exercises = parse_exercises_from_markdown()
     exercises = exercises[:MAX_EXERCISES_TO_EMBED]
 
     if not exercises:
@@ -248,6 +257,8 @@ def build_exercise_index(force_refresh: bool = False) -> None:
                 "nameVi": exercise.get("nameVi", ""),
                 "nameEn": exercise.get("nameEn", ""),
                 "muscleGroup": exercise.get("muscleGroup", ""),
+                "difficulty": exercise.get("difficulty", ""),
+                "calories": exercise.get("calories", ""),
                 "equipment": exercise.get("equipment", ""),
                 "raw": json.dumps(exercise, ensure_ascii=False),
             }
