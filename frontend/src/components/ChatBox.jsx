@@ -1,13 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Send,
-  Bot,
-  User,
-  Activity,
-  Target,
-  Zap,
-  TrendingUp,
-} from "lucide-react";
+import { Send, Bot, User, Activity } from "lucide-react";
 import { chatAPI } from "../api";
 
 const ChatBox = () => {
@@ -19,6 +11,7 @@ const ChatBox = () => {
   );
   const [nutritionInfo, setNutritionInfo] = useState(null);
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -34,10 +27,32 @@ const ChatBox = () => {
       id: Date.now(),
       type: "bot",
       content:
-        "Xin chào! Tôi là chuyên gia dinh dưỡng thể hình AI của bạn! 💪\n\nĐể có thể tư vấn chính xác nhất, hãy cho tôi biết:\n• Chiều cao (cm)\n• Cân nặng (kg)\n• Tuổi và giới tính\n• Mục tiêu (tăng cơ, giảm mỡ, giữ cân)\n• Số buổi tập/tuần\n\nBạn có thể chia sẻ thông tin này trong một tin nhắn hoặc từng phần nhé!",
+        "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Thông tin về các chi nhánh/clubs\n• Tư vấn dinh dưỡng và thể hình\n• Câu hỏi về dịch vụ của The New Gym\n• Tư vấn về chương trình tập luyện\n\nBạn cần hỗ trợ gì hôm nay?",
       timestamp: new Date(),
     };
     setMessages([welcomeMessage]);
+  }, []);
+
+  // Lắng nghe phím Space để focus vào textarea
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Chỉ focus khi nhấn Space và không đang focus vào input/textarea/button
+      if (
+        e.key === " " &&
+        document.activeElement !== textareaRef.current &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA" &&
+        document.activeElement?.tagName !== "BUTTON"
+      ) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   const handleSendMessage = async () => {
@@ -52,6 +67,8 @@ const ChatBox = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputMessage("");
+    // Blur textarea sau khi gửi tin nhắn
+    textareaRef.current?.blur();
     setIsLoading(true);
 
     try {
@@ -210,19 +227,6 @@ const ChatBox = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-fitness-500 to-primary-500 text-white p-4 rounded-t-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-            <Bot className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">Fitness Nutrition AI</h1>
-            <p className="text-sm opacity-90">Chuyên gia dinh dưỡng thể hình</p>
-          </div>
-        </div>
-      </div>
-
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
         {messages.map((message) => (
@@ -313,6 +317,7 @@ const ChatBox = () => {
         <div className="flex gap-2">
           <div className="flex-1 relative">
             <textarea
+              ref={textareaRef}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
@@ -333,7 +338,8 @@ const ChatBox = () => {
         </div>
 
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
-          Nhấn Enter để gửi, Shift+Enter để xuống dòng
+          Nhấn Enter để gửi, Shift+Enter để xuống dòng, Space để focus vào ô
+          nhập
         </div>
       </div>
     </div>

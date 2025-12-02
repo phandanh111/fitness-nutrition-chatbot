@@ -1,42 +1,51 @@
-"""
-Fitness Nutrition Chatbot API
-Backend cho chatbot tư vấn dinh dưỡng thể hình sử dụng Ollama
-"""
-
 import os
-import json
-import re
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from utils.calculator import calculate_nutrition_plan
-from utils.formatter import format_nutrition_info, format_daily_menu, format_quick_tips
 from utils.ollama_client import ollama_client
-import requests
+from services.club_service import generate_club_response, is_club_related_query
+from services.exercise_service import generate_exercise_response, is_exercise_related_query
+from utils.clubs_client import clubs_client
+from services.llm_service import get_ai_response
+from services.conversation_service import (
+    get_history as get_conversation_history,
+    record_turn as record_conversation_turn,
+    clear_session as clear_conversation_session,
+)
 
 # Load environment variables
 load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Fitness Nutrition Chatbot API",
-    description="API cho chatbot tư vấn dinh dưỡng thể hình sử dụng Ollama",
+    title="The New Gym Club Information Chatbot API",
+    description="API cho chatbot cung cấp thông tin chi nhánh The New Gym sử dụng RAG",
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - Cho phép truy cập từ localhost và IP public
+# Lấy danh sách origins từ environment variable hoặc dùng mặc định
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+# Thêm IP public nếu có trong env
+public_ip = os.getenv("PUBLIC_IP")
+if public_ip:
+    cors_origins.extend([
+        f"http://{public_ip}:3000",
+        f"http://{public_ip}",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # AI Provider configuration
-AI_PROVIDER = os.getenv("AI_PROVIDER", "deepseek")
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -47,10 +56,7 @@ def load_system_prompt():
         with open("prompt_system.txt", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "Bạn là chuyên gia dinh dưỡng thể hình. Hãy tư vấn dinh dưỡng cho người tập gym."
-
-# In-memory storage for user sessions
-user_sessions: Dict[str, Dict] = {}
+        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về thông tin chi nhánh và các câu hỏi khác về The New Gym."
 
 # Pydantic models
 class ChatMessage(BaseModel):
@@ -60,104 +66,11 @@ class ChatMessage(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     session_id: str
-    nutrition_info: Optional[Dict] = None
-
-class UserInfo(BaseModel):
-    height_cm: Optional[float] = None
-    weight_kg: Optional[float] = None
-    age: Optional[int] = None
-    gender: Optional[str] = None
-    goal: Optional[str] = None
-    workout_days_per_week: Optional[int] = None
-    session_id: str
-
-def extract_user_info_from_message(message: str) -> Dict:
-    """Trích xuất thông tin người dùng từ tin nhắn"""
-    info = {}
-    message_lower = message.lower()
-    
-    # Extract height
-    if "cao" in message_lower and "m" in message_lower:
-        height_match = re.search(r'(\d+\.?\d*)\s*m', message_lower)
-        if height_match:
-            info['height_cm'] = float(height_match.group(1)) * 100
-    
-    # Extract weight
-    if "nặng" in message_lower and "kg" in message_lower:
-        weight_match = re.search(r'(\d+\.?\d*)\s*kg', message_lower)
-        if weight_match:
-            info['weight_kg'] = float(weight_match.group(1))
-    
-    # Extract age
-    if "tuổi" in message_lower:
-        age_match = re.search(r'(\d+)\s*tuổi', message_lower)
-        if age_match:
-            info['age'] = int(age_match.group(1))
-    
-    # Extract gender
-    if "nam" in message_lower or "trai" in message_lower:
-        info['gender'] = 'male'
-    elif "nữ" in message_lower or "gái" in message_lower:
-        info['gender'] = 'female'
-    
-    # Extract goal
-    if "tăng cơ" in message_lower or "bulk" in message_lower:
-        info['goal'] = 'tăng cơ'
-    elif "giảm mỡ" in message_lower or "cut" in message_lower:
-        info['goal'] = 'giảm mỡ'
-    elif "giữ cân" in message_lower or "maintain" in message_lower:
-        info['goal'] = 'giữ cân'
-    
-    # Extract workout days
-    if "tập" in message_lower and "buổi" in message_lower:
-        workout_match = re.search(r'(\d+)\s*buổi', message_lower)
-        if workout_match:
-            info['workout_days_per_week'] = int(workout_match.group(1))
-    
-    return info
-
-def get_ai_response(messages: List[Dict], system_prompt: str) -> str:
-    """Gọi AI provider theo cấu hình (ollama | deepseek)."""
-    provider = (AI_PROVIDER or "ollama").lower()
-    if provider == "deepseek":
-        return get_deepseek_response(messages, system_prompt)
-    return get_ollama_response(messages, system_prompt)
-
-def get_ollama_response(messages: List[Dict], system_prompt: str) -> str:
-    try:
-        if not ollama_client.is_available():
-            return "Xin lỗi, Ollama service chưa sẵn sàng. Vui lòng chạy 'ollama serve' trước."
-        return ollama_client.chat(messages, system_prompt)
-    except Exception as e:
-        return f"Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu: {str(e)}"
-
-def get_deepseek_response(messages: List[Dict], system_prompt: str) -> str:
-    try:
-        if not DEEPSEEK_API_KEY:
-            return "Xin lỗi, DEEPSEEK_API_KEY chưa được cấu hình. Vui lòng đặt AI_PROVIDER=ollama hoặc thêm DEEPSEEK_API_KEY."
-        url = f"{DEEPSEEK_BASE_URL}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": DEEPSEEK_MODEL,
-            "messages": [{"role": "system", "content": system_prompt}] + messages,
-            "temperature": 0.7,
-            "max_tokens": 1000
-        }
-        r = requests.post(url, headers=headers, json=payload, timeout=60)
-        r.raise_for_status()
-        data = r.json()
-        # DeepSeek is OpenAI-compatible; extract content
-        return (data["choices"][0]["message"]["content"] or "").strip()
-    except requests.RequestException as e:
-        return f"Lỗi DeepSeek: {str(e)}"
 
 # API Routes
 @app.get("/")
 async def root():
-    return {"message": "Fitness Nutrition Chatbot API", "status": "running"}
+    return {"message": "The New Gym Club Information Chatbot API", "status": "running"}
 
 @app.get("/ai-status")
 async def get_ai_status():
@@ -187,97 +100,195 @@ async def chat(chat_message: ChatMessage):
     try:
         session_id = chat_message.session_id
         message = chat_message.message
+        history = get_conversation_history(session_id)
         
         # Load system prompt
         system_prompt = load_system_prompt()
         
-        # Extract user info from message
-        user_info = extract_user_info_from_message(message)
+        # Check if query is about exercises (kiểm tra trước vì có thể nhầm với clubs)
+        try:
+            is_exercise_query = is_exercise_related_query(message)
+            if is_exercise_query:
+                try:
+                    exercise_response_text = generate_exercise_response(message)
+                    if exercise_response_text:
+                        record_conversation_turn(session_id, message, exercise_response_text)
+                        return ChatResponse(
+                            response=exercise_response_text,
+                            session_id=session_id
+                        )
+                except Exception as e:
+                    print(f"[Chat] Error generating exercise response: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue to try clubs or general LLM
+        except Exception as e:
+            print(f"[Chat] Error checking exercise query: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to try clubs or general LLM
         
-        # Update session with new info
-        if session_id not in user_sessions:
-            user_sessions[session_id] = {}
+        # Check if query is about clubs
+        try:
+            is_club_query = is_club_related_query(message)
+            if is_club_query:
+                try:
+                    club_response_text = generate_club_response(message)
+                    if club_response_text:
+                        record_conversation_turn(session_id, message, club_response_text)
+                        return ChatResponse(
+                            response=club_response_text,
+                            session_id=session_id
+                        )
+                except Exception as e:
+                    print(f"[Chat] Error generating club response: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue to general LLM
+        except Exception as e:
+            print(f"[Chat] Error checking club query: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to general LLM
         
-        user_sessions[session_id].update(user_info)
-        
-        # Prepare messages for AI
-        messages = [{"role": "user", "content": message}]
+        # Prepare messages for AI (generic questions)
+        vietnamese_reminder = (
+            "VUI LÒNG CHỈ TRẢ LỜI BẰNG TIẾNG VIỆT. "
+            "Nếu lỡ trả lời bằng ngôn ngữ khác, bạn phải xin lỗi và trả lời lại bằng tiếng Việt. "
+            "Đây là câu hỏi của khách:"
+        )
+        user_content = f"{vietnamese_reminder}\n\n{message}" if not history else message
+        messages = history + [
+            {
+                "role": "user",
+                "content": user_content,
+            }
+        ]
         
         # Get AI response
-        ai_response = get_ai_response(messages, system_prompt)
-        
-        # Calculate nutrition info if we have enough data
-        nutrition_info = None
-        if session_id in user_sessions:
-            session_data = user_sessions[session_id]
-            if all(key in session_data for key in ['height_cm', 'weight_kg', 'age', 'gender', 'goal', 'workout_days_per_week']):
-                try:
-                    nutrition_info = calculate_nutrition_plan(
-                        height_cm=session_data['height_cm'],
-                        weight_kg=session_data['weight_kg'],
-                        age=session_data['age'],
-                        gender=session_data['gender'],
-                        goal=session_data['goal'],
-                        workout_days_per_week=session_data['workout_days_per_week']
-                    )
-                except Exception as e:
-                    print(f"Error calculating nutrition: {e}")
-        
-        return ChatResponse(
-            response=ai_response,
-            session_id=session_id,
-            nutrition_info=nutrition_info
-        )
+        try:
+            ai_response = get_ai_response(messages, system_prompt)
+            if not ai_response or not ai_response.strip():
+                ai_response = "Xin lỗi, mình không thể tạo phản hồi lúc này. Vui lòng thử lại sau."
+            record_conversation_turn(session_id, message, ai_response)
+            
+            return ChatResponse(
+                response=ai_response,
+                session_id=session_id
+            )
+        except Exception as e:
+            print(f"[Chat] Error getting AI response: {e}")
+            import traceback
+            traceback.print_exc()
+            # Trả về response lỗi thay vì raise exception
+            error_response = "Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại sau."
+            record_conversation_turn(session_id, message, error_response)
+            return ChatResponse(
+                response=error_response,
+                session_id=session_id
+            )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[Chat] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Trả về response lỗi thay vì raise HTTPException để frontend không crash
+        try:
+            error_response = "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau."
+            record_conversation_turn(session_id, chat_message.message if hasattr(chat_message, 'message') else "", error_response)
+            return ChatResponse(
+                response=error_response,
+                session_id=session_id if hasattr(chat_message, 'session_id') else "unknown"
+            )
+        except:
+            # Nếu không thể tạo response, mới raise exception
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@app.post("/user-info")
-async def update_user_info(user_info: UserInfo):
-    """Cập nhật thông tin người dùng"""
+@app.get("/clubs")
+async def get_clubs(refresh: bool = False):
+    """Lấy danh sách tất cả clubs"""
     try:
-        session_id = user_info.session_id
-        
-        # Update session data
-        user_sessions[session_id] = {
-            "height_cm": user_info.height_cm,
-            "weight_kg": user_info.weight_kg,
-            "age": user_info.age,
-            "gender": user_info.gender,
-            "goal": user_info.goal,
-            "workout_days_per_week": user_info.workout_days_per_week
+        clubs = clubs_client.fetch_clubs(use_cache=not refresh)
+        source = clubs_client.get_last_source()
+        return {
+            "code": 1010,
+            "message": "GET_CLUBS_REFRESH" if refresh else "GET_CLUBS",
+            "data": clubs,
+            "meta": {
+                "count": len(clubs),
+                "source": source,
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "refresh": refresh
+            }
         }
-        
-        return {"message": "User info updated successfully", "session_id": session_id}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/nutrition-plan/{session_id}")
-async def get_nutrition_plan(session_id: str):
-    """Lấy kế hoạch dinh dưỡng cho session"""
+@app.get("/clubs/search")
+async def search_clubs(q: str, refresh: bool = False):
+    """Tìm kiếm clubs theo từ khóa"""
     try:
-        if session_id not in user_sessions:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        session_data = user_sessions[session_id]
-        
-        if not all(key in session_data for key in ['height_cm', 'weight_kg', 'age', 'gender', 'goal', 'workout_days_per_week']):
-            raise HTTPException(status_code=400, detail="Incomplete user information")
-        
-        nutrition_plan = calculate_nutrition_plan(
-            height_cm=session_data['height_cm'],
-            weight_kg=session_data['weight_kg'],
-            age=session_data['age'],
-            gender=session_data['gender'],
-            goal=session_data['goal'],
-            workout_days_per_week=session_data['workout_days_per_week']
-        )
-        
-        return nutrition_plan
-        
+        if not q:
+            raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
+        results = clubs_client.search_clubs(q, use_cache=not refresh)
+        source = clubs_client.get_last_source()
+        return {
+            "code": 1010,
+            "message": "SEARCH_CLUBS_REFRESH" if refresh else "SEARCH_CLUBS",
+            "data": results,
+            "meta": {
+                "count": len(results),
+                "source": source,
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "refresh": refresh,
+                "query": q
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/clubs/active")
+async def get_active_clubs(refresh: bool = False):
+    """Lấy danh sách clubs đang hoạt động"""
+    try:
+        clubs = clubs_client.get_active_clubs(use_cache=not refresh)
+        source = clubs_client.get_last_source()
+        return {
+            "code": 1010,
+            "message": "GET_ACTIVE_CLUBS_REFRESH" if refresh else "GET_ACTIVE_CLUBS",
+            "data": clubs,
+            "meta": {
+                "count": len(clubs),
+                "source": source,
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "refresh": refresh
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/clubs/cache")
+async def clear_clubs_cache():
+    """Xóa cache clubs để lần gọi tiếp theo lấy dữ liệu mới"""
+    try:
+        clubs_client.clear_cache()
+        return {
+            "message": "Clubs cache cleared",
+            "meta": {
+                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
+                "source": clubs_client.get_last_source()
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/sessions/{session_id}")
+async def clear_session(session_id: str):
+    """Xóa lịch sử hội thoại của session hiện tại"""
+    clear_conversation_session(session_id)
+    return {"message": "Session cleared", "session_id": session_id}
+
 
 if __name__ == "__main__":
     import uvicorn
