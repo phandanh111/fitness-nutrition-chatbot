@@ -1,6 +1,6 @@
 # Cách Vector Search Hoạt Động - Từ Documents Đến Câu Trả Lời
 
-Tài liệu này giải thích chi tiết cách mà documents và câu hỏi được vectorize và tìm thấy nhau trong hệ thống RAG.
+Tài liệu này giải thích chi tiết cách mà documents và câu hỏi được vectorize và tìm thấy nhau trong hệ thống RAG của The New Gym.
 
 ---
 
@@ -10,10 +10,10 @@ Vector search hoạt động dựa trên nguyên lý: **Văn bản có ngữ ngh
 
 ```
 Document: "Chi nhánh: Hoàng Văn Thụ, Địa chỉ: 431A Hoàng Văn Thụ, Tân Bình, Hồ Chí Minh"
-    ↓ [Vectorize]
+    ↓ [Vectorize với Vietnamese Embedding Model]
 Vector: [0.123, -0.456, 0.789, ..., 0.234] (384 dimensions)
     ↓ [Lưu vào ChromaDB]
-ChromaDB Collection
+ChromaDB Collection: club_documents
 
 Query: "Bạn có chi nhánh nào ở Tân Bình không?"
     ↓ [Vectorize với cùng model]
@@ -28,9 +28,11 @@ Tìm thấy Document trên vì vectors gần nhau!
 
 ### Bước 1: Vectorize Documents (Ingest Phase)
 
-**File**: `backend/rag/club_rag.py` → `build_club_index()`
+**File**: `rag/base_rag.py` → `BaseRAG.build_index()`
 
 #### 1.1. Xây dựng Text Chunks
+
+**Clubs** (`rag/topics/clubs.py` → `ClubsTextBuilder`):
 
 ```python
 # Ví dụ: Club data
@@ -51,9 +53,31 @@ Trạng thái: Đang hoạt động
 """
 ```
 
+**Exercises** (`rag/topics/exercises.py` → `ExercisesTextBuilder`):
+
+```python
+# Ví dụ: Exercise data
+exercise = {
+    "nameVi": "Hít đất",
+    "nameEn": "Push-up",
+    "muscleGroup": "Ngực",
+    "difficulty": "Dễ",
+    "calories": "50-100 kcal"
+}
+
+# Chuyển thành text chunk
+text = """
+Bài tập: Hít đất
+Tên tiếng Anh: Push-up
+Nhóm cơ: Ngực
+Độ khó: Dễ
+Kcal tiêu thụ: 50-100 kcal
+"""
+```
+
 #### 1.2. Tokenize (Tiếng Việt)
 
-**File**: `backend/rag/club_rag.py` → `VietnameseEmbeddingFunction._tokenize_texts()`
+**File**: `rag/base_rag.py` → `VietnameseEmbeddingFunction._tokenize_texts()`
 
 ```python
 from pyvi.ViTokenizer import tokenize
@@ -71,7 +95,7 @@ tokenized = tokenize(text)
 
 #### 1.3. Tạo Embeddings
 
-**File**: `backend/rag/club_rag.py` → `VietnameseEmbeddingFunction._embed()`
+**File**: `rag/base_rag.py` → `VietnameseEmbeddingFunction._embed()`
 
 ```python
 from sentence_transformers import SentenceTransformer
@@ -88,6 +112,7 @@ embeddings = model.encode(tokenized_texts, convert_to_numpy=True)
 - Output: Vector 384 dimensions
 - Mỗi dimension là một số thực (float)
 - Vector này đại diện cho **ngữ nghĩa** của text
+- Được train đặc biệt cho tiếng Việt
 
 **Ví dụ vector của document:**
 
@@ -98,7 +123,7 @@ Vector: [0.123, -0.456, 0.789, 0.234, -0.567, ..., 0.890] (384 số)
 
 #### 1.4. Lưu Vào ChromaDB
 
-**File**: `backend/rag/club_rag.py` → `build_club_index()`
+**File**: `rag/base_rag.py` → `BaseRAG.build_index()`
 
 ```python
 collection.add(
@@ -119,7 +144,7 @@ collection.add(
 **Cấu trúc trong ChromaDB:**
 
 ```
-Collection: club_documents
+Collection: club_documents (hoặc exercise_documents)
 ├── ID: "hoang_van_thu"
 ├── Document: "Chi nhánh: Hoàng Văn Thụ..."
 ├── Metadata: {"name": "Hoàng Văn Thụ", ...}
@@ -130,7 +155,7 @@ Collection: club_documents
 
 ### Bước 2: Vectorize Query (Serving Phase)
 
-**File**: `backend/rag/club_rag.py` → `semantic_search()`
+**File**: `rag/base_rag.py` → `BaseRAG.semantic_search()`
 
 #### 2.1. Nhận Câu Hỏi
 
@@ -140,7 +165,7 @@ query = "Bạn có chi nhánh nào ở Tân Bình không?"
 
 #### 2.2. Tokenize Query
 
-**File**: `backend/rag/club_rag.py` → `VietnameseEmbeddingFunction.embed_query()`
+**File**: `rag/base_rag.py` → `VietnameseEmbeddingFunction.embed_query()`
 
 ```python
 # Cùng hàm tokenize như documents
@@ -169,7 +194,7 @@ Vector: [0.125, -0.458, 0.791, 0.238, -0.569, ..., 0.892] (384 số)
 
 ### Bước 3: Tìm Kiếm (Similarity Search)
 
-**File**: `backend/rag/club_rag.py` → `semantic_search()`
+**File**: `rag/base_rag.py` → `BaseRAG.semantic_search()`
 
 #### 3.1. ChromaDB Query
 
@@ -295,7 +320,7 @@ Nhưng embeddings sẽ gần nhau vì:
 
 **Tại sao 384?**
 
-- Model `paraphrase-multilingual-MiniLM-L12-v2` được train với 384 dims
+- Model `dangvantuan/vietnamese-embedding` được train với 384 dims
 - Đủ để capture ngữ nghĩa phức tạp
 - Không quá lớn để tính toán nhanh
 
@@ -405,6 +430,7 @@ results = collection.query(query_embeddings=query_embedding)  # Tìm kiếm
 2. **Cùng Tokenization**: Tokenize nhất quán để vectors có ý nghĩa
 3. **Normalization**: ChromaDB tự động normalize vectors cho cosine similarity
 4. **Index**: ChromaDB dùng HNSW index để tìm kiếm nhanh (không phải brute force)
+5. **Vietnamese Support**: Model `dangvantuan/vietnamese-embedding` được train đặc biệt cho tiếng Việt
 
 ---
 
@@ -414,3 +440,4 @@ results = collection.query(query_embeddings=query_embedding)  # Tìm kiếm
 - [Sentence Transformers](https://www.sbert.net/)
 - [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
 - [HNSW Algorithm](https://arxiv.org/abs/1603.09320)
+- [Vietnamese Embedding Model](https://huggingface.co/dangvantuan/vietnamese-embedding)
