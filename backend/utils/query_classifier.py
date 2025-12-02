@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from rag.club_rag import semantic_search as club_semantic_search
-from rag.exercise_rag import semantic_search as exercise_semantic_search
+from rag.unified_rag import semantic_search
 
 
 def classify_query(message: str, top_k: int = 3, max_score: float = 0.95) -> Literal["clubs", "exercises", "general"]:
@@ -31,14 +30,20 @@ def classify_query(message: str, top_k: int = 3, max_score: float = 0.95) -> Lit
     exercise_results = []
     
     try:
-        club_results = club_semantic_search(message, top_k=top_k)
+        club_results = semantic_search("clubs", message, top_k=top_k)
     except Exception as e:
         print(f"[QueryClassifier] Club search failed: {e}")
+        import traceback
+        traceback.print_exc()
+        club_results = []  # Đảm bảo là empty list
     
     try:
-        exercise_results = exercise_semantic_search(message, top_k=top_k)
+        exercise_results = semantic_search("exercises", message, top_k=top_k)
     except Exception as e:
         print(f"[QueryClassifier] Exercise search failed: {e}")
+        import traceback
+        traceback.print_exc()
+        exercise_results = []  # Đảm bảo là empty list
     
     # Nếu không có kết quả nào, trả về general
     if not club_results and not exercise_results:
@@ -85,9 +90,21 @@ def classify_query(message: str, top_k: int = 3, max_score: float = 0.95) -> Lit
 
 def is_club_query(message: str) -> bool:
     """Kiểm tra xem câu hỏi có phải về clubs không."""
-    return classify_query(message) == "clubs"
+    try:
+        return classify_query(message) == "clubs"
+    except Exception as e:
+        print(f"[QueryClassifier] Error in is_club_query: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def is_exercise_query(message: str) -> bool:
     """Kiểm tra xem câu hỏi có phải về exercises không."""
-    return classify_query(message) == "exercises"
+    try:
+        return classify_query(message) == "exercises"
+    except Exception as e:
+        print(f"[QueryClassifier] Error in is_exercise_query: {e}")
+        import traceback
+        traceback.print_exc()
+        return False

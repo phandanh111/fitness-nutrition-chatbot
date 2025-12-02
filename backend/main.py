@@ -109,15 +109,21 @@ async def chat(chat_message: ChatMessage):
         try:
             is_exercise_query = is_exercise_related_query(message)
             if is_exercise_query:
-                exercise_response_text = generate_exercise_response(message)
-                if exercise_response_text:
-                    record_conversation_turn(session_id, message, exercise_response_text)
-                    return ChatResponse(
-                        response=exercise_response_text,
-                        session_id=session_id
-                    )
+                try:
+                    exercise_response_text = generate_exercise_response(message)
+                    if exercise_response_text:
+                        record_conversation_turn(session_id, message, exercise_response_text)
+                        return ChatResponse(
+                            response=exercise_response_text,
+                            session_id=session_id
+                        )
+                except Exception as e:
+                    print(f"[Chat] Error generating exercise response: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue to try clubs or general LLM
         except Exception as e:
-            print(f"[Chat] Error in exercise query: {e}")
+            print(f"[Chat] Error checking exercise query: {e}")
             import traceback
             traceback.print_exc()
             # Continue to try clubs or general LLM
@@ -126,15 +132,21 @@ async def chat(chat_message: ChatMessage):
         try:
             is_club_query = is_club_related_query(message)
             if is_club_query:
-                club_response_text = generate_club_response(message)
-                if club_response_text:
-                    record_conversation_turn(session_id, message, club_response_text)
-                    return ChatResponse(
-                        response=club_response_text,
-                        session_id=session_id
-                    )
+                try:
+                    club_response_text = generate_club_response(message)
+                    if club_response_text:
+                        record_conversation_turn(session_id, message, club_response_text)
+                        return ChatResponse(
+                            response=club_response_text,
+                            session_id=session_id
+                        )
+                except Exception as e:
+                    print(f"[Chat] Error generating club response: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue to general LLM
         except Exception as e:
-            print(f"[Chat] Error in club query: {e}")
+            print(f"[Chat] Error checking club query: {e}")
             import traceback
             traceback.print_exc()
             # Continue to general LLM
@@ -154,19 +166,43 @@ async def chat(chat_message: ChatMessage):
         ]
         
         # Get AI response
-        ai_response = get_ai_response(messages, system_prompt)
-        record_conversation_turn(session_id, message, ai_response)
-        
-        return ChatResponse(
-            response=ai_response,
-            session_id=session_id
-        )
+        try:
+            ai_response = get_ai_response(messages, system_prompt)
+            if not ai_response or not ai_response.strip():
+                ai_response = "Xin lỗi, mình không thể tạo phản hồi lúc này. Vui lòng thử lại sau."
+            record_conversation_turn(session_id, message, ai_response)
+            
+            return ChatResponse(
+                response=ai_response,
+                session_id=session_id
+            )
+        except Exception as e:
+            print(f"[Chat] Error getting AI response: {e}")
+            import traceback
+            traceback.print_exc()
+            # Trả về response lỗi thay vì raise exception
+            error_response = "Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại sau."
+            record_conversation_turn(session_id, message, error_response)
+            return ChatResponse(
+                response=error_response,
+                session_id=session_id
+            )
         
     except Exception as e:
         print(f"[Chat] Unexpected error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        # Trả về response lỗi thay vì raise HTTPException để frontend không crash
+        try:
+            error_response = "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau."
+            record_conversation_turn(session_id, chat_message.message if hasattr(chat_message, 'message') else "", error_response)
+            return ChatResponse(
+                response=error_response,
+                session_id=session_id if hasattr(chat_message, 'session_id') else "unknown"
+            )
+        except:
+            # Nếu không thể tạo response, mới raise exception
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/clubs")
 async def get_clubs(refresh: bool = False):

@@ -146,8 +146,14 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
 
 def is_exercise_related_query(message: str) -> bool:
     """Phát hiện câu hỏi về bài tập bằng semantic search."""
-    from utils.query_classifier import is_exercise_query
-    return is_exercise_query(message)
+    try:
+        from utils.query_classifier import is_exercise_query
+        return is_exercise_query(message)
+    except Exception as e:
+        print(f"[ExerciseService] Error in is_exercise_related_query: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def generate_exercise_response(message: str) -> str:
@@ -171,6 +177,8 @@ def generate_exercise_response(message: str) -> str:
         semantic_results = semantic_search(message, top_k=MAX_CONTEXT_EXERCISES)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
+        import traceback
+        traceback.print_exc()
 
     if semantic_results:
         semantic_exercises = [item.get("raw") for item in semantic_results if item.get("raw")]

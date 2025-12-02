@@ -7,7 +7,100 @@ from typing import List, Dict, Optional
 from pathlib import Path
 from datetime import datetime
 
-from rag.club_rag import _parse_clubs_from_markdown, CLUBS_MD_PATH
+# Define CLUBS_MD_PATH locally để tránh circular import
+BASE_DIR = Path(__file__).resolve().parent.parent
+CLUBS_MD_PATH = BASE_DIR / "data" / "clubs.md"
+
+def _parse_clubs_from_markdown(md_path: Path):
+    """Parse clubs từ markdown - lazy import để tránh circular dependency."""
+    try:
+        from rag.topics.clubs import ClubsParser
+        parser = ClubsParser()
+        return parser._parse_from_markdown(md_path)
+    except ImportError:
+        # Fallback: parse trực tiếp nếu không thể import
+        import re
+        if not md_path.exists():
+            raise FileNotFoundError(f"File markdown không tồn tại: {md_path}")
+        
+        with open(md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        clubs = []
+        pattern = r"## CLB (\d+) — (.+?) \(([A-Z0-9]+)\)\n(.*?)(?=\n## CLB|\Z)"
+        matches = re.finditer(pattern, content, re.DOTALL)
+        
+        for match in matches:
+            club_num = match.group(1)
+            club_name = match.group(2).strip()
+            club_id = match.group(3).strip()
+            club_content = match.group(4).strip()
+            
+            club_data = {
+                "id": int(club_num),
+                "key": club_id,
+                "nameVi": "",
+                "nameEn": "",
+                "address": "",
+                "location": "",
+                "openDate": "",
+                "isActive": 0,
+                "informationUrl": "",
+                "latitude": None,
+                "longitude": None,
+                "city": {},
+                "district": {},
+            }
+            
+            for line in club_content.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("- "):
+                    line = line[2:].strip()
+                
+                if line.startswith("Tên tiếng Việt:"):
+                    club_data["nameVi"] = line.replace("Tên tiếng Việt:", "").strip()
+                elif line.startswith("Tên tiếng Anh:"):
+                    club_data["nameEn"] = line.replace("Tên tiếng Anh:", "").strip()
+                elif line.startswith("Địa chỉ:"):
+                    address = line.replace("Địa chỉ:", "").strip()
+                    club_data["address"] = address
+                    club_data["location"] = address
+                elif line.startswith("Ngày mở:"):
+                    date_str = line.replace("Ngày mở:", "").strip()
+                    if "/" in date_str:
+                        parts = date_str.split("/")
+                        if len(parts) == 3:
+                            club_data["openDate"] = f"{parts[2]}-{parts[1]}-{parts[0]}T00:00:00.000Z"
+                elif line.startswith("Hoạt động:"):
+                    is_active = line.replace("Hoạt động:", "").strip().lower()
+                    club_data["isActive"] = 1 if is_active == "có" else 0
+                elif line.startswith("Website:"):
+                    club_data["informationUrl"] = line.replace("Website:", "").strip()
+                elif line.startswith("Tọa độ:"):
+                    coords = line.replace("Tọa độ:", "").strip()
+                    if coords and coords != "Không có":
+                        try:
+                            lat, lon = map(float, coords.split(","))
+                            club_data["latitude"] = lat
+                            club_data["longitude"] = lon
+                        except:
+                            pass
+            
+            if club_data["address"]:
+                parts = [p.strip() for p in club_data["address"].split(",")]
+                if len(parts) >= 3:
+                    district_name = parts[-3] if len(parts) >= 3 else ""
+                    city_name = parts[-2] if len(parts) >= 2 else ""
+                    if district_name:
+                        club_data["district"] = {"districtName": district_name}
+                    if city_name:
+                        club_data["city"] = {"cityName": city_name}
+            
+            clubs.append(club_data)
+        
+        return clubs
 
 class ClubsClient:
     def __init__(self, markdown_path: Optional[Path] = None):

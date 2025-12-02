@@ -8,8 +8,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from rag.club_rag import build_club_index  # noqa: E402
-from rag.exercise_rag import build_exercise_index  # noqa: E402
+from rag.unified_rag import build_index  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,17 +37,17 @@ def main() -> None:
     if args.force:
         print("Rebuilding semantic indexes (force refresh)...")
         print("  → Building club index...")
-        build_club_index(force_refresh=True, source=args.source)
+        build_index("clubs", force_refresh=True, source=args.source)
         if not args.skip_exercises:
             print("  → Building exercise index...")
-            build_exercise_index(force_refresh=True)
+            build_index("exercises", force_refresh=True)
     else:
         print("Updating semantic indexes (incremental)...")
         print("  → Updating club index...")
-        build_club_index(force_refresh=False, source=args.source)
+        build_index("clubs", force_refresh=False, source=args.source)
         if not args.skip_exercises:
             print("  → Updating exercise index...")
-            build_exercise_index(force_refresh=False)
+            build_index("exercises", force_refresh=False)
     print("Done.")
 
 

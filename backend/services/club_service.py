@@ -189,8 +189,14 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
 
 def is_club_related_query(message: str) -> bool:
     """Phát hiện câu hỏi về chi nhánh/clubs bằng semantic search."""
-    from utils.query_classifier import is_club_query
-    return is_club_query(message)
+    try:
+        from utils.query_classifier import is_club_query
+        return is_club_query(message)
+    except Exception as e:
+        print(f"[ClubService] Error in is_club_related_query: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def search_clubs_by_keyword(message: str, clubs: List[Dict]) -> List[Dict]:
@@ -261,6 +267,8 @@ def generate_club_response(message: str) -> str:
         semantic_results = semantic_search(message, top_k=MAX_CONTEXT_CLUBS)
     except Exception as exc:
         print(f"[ClubService] semantic_search failed: {exc}")
+        import traceback
+        traceback.print_exc()
 
     if semantic_results:
         semantic_clubs = [item.get("raw") for item in semantic_results if item.get("raw")]
@@ -269,6 +277,8 @@ def generate_club_response(message: str) -> str:
             contexts.append(build_overall_context(clubs))
             return generate_answer_from_context(message, contexts)
 
+    # Nếu không tìm thấy kết quả semantic search, trả về overview và gợi ý
+    overview_context = build_overall_context(clubs)
     no_data_message = build_no_data_message("khu vực bạn quan tâm", "city", clubs)
     return generate_answer_from_context(
         message,
