@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Bỏ qua việc build exercise index.",
     )
+    parser.add_argument(
+        "--skip-terms",
+        action="store_true",
+        help="Bỏ qua việc build terms index.",
+    )
     return parser.parse_args()
 
 
@@ -41,6 +46,9 @@ def main() -> None:
         if not args.skip_exercises:
             print("  → Building exercise index...")
             build_index("exercises", force_refresh=True)
+        if not args.skip_terms:
+            print("  → Building terms index...")
+            build_index("terms", force_refresh=True)
     else:
         print("Updating semantic indexes (incremental)...")
         print("  → Updating club index...")
@@ -48,6 +56,9 @@ def main() -> None:
         if not args.skip_exercises:
             print("  → Updating exercise index...")
             build_index("exercises", force_refresh=False)
+        if not args.skip_terms:
+            print("  → Updating terms index...")
+            build_index("terms", force_refresh=False)
     print("Done.")
 
 

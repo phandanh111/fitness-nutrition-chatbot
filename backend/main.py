@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from utils.ollama_client import ollama_client
 from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
+from services.terms_service import generate_terms_response, is_terms_related_query
 from utils.clubs_client import clubs_client
 from services.llm_service import get_ai_response
 from services.conversation_service import (
@@ -105,7 +106,30 @@ async def chat(chat_message: ChatMessage):
         # Load system prompt
         system_prompt = load_system_prompt()
         
-        # Check if query is about exercises (kiểm tra trước vì có thể nhầm với clubs)
+        # Check if query is about terms (điều khoản điều kiện)
+        try:
+            is_terms_query = is_terms_related_query(message)
+            if is_terms_query:
+                try:
+                    terms_response_text = generate_terms_response(message)
+                    if terms_response_text:
+                        record_conversation_turn(session_id, message, terms_response_text)
+                        return ChatResponse(
+                            response=terms_response_text,
+                            session_id=session_id
+                        )
+                except Exception as e:
+                    print(f"[Chat] Error generating terms response: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue to try other topics or general LLM
+        except Exception as e:
+            print(f"[Chat] Error checking terms query: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to try other topics or general LLM
+        
+        # Check if query is about exercises
         try:
             is_exercise_query = is_exercise_related_query(message)
             if is_exercise_query:
