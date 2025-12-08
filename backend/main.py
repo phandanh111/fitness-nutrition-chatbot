@@ -155,9 +155,12 @@ async def chat(chat_message: ChatMessage):
         vietnamese_reminder = (
             "VUI LÒNG CHỈ TRẢ LỜI BẰNG TIẾNG VIỆT. "
             "Nếu lỡ trả lời bằng ngôn ngữ khác, bạn phải xin lỗi và trả lời lại bằng tiếng Việt. "
-            "Đây là câu hỏi của khách:"
         )
-        user_content = f"{vietnamese_reminder}\n\n{message}" if not history else message
+        
+        if not history:
+            user_content = f"{vietnamese_reminder}Đây là câu hỏi của khách:\n\n{message}"
+        else:
+            user_content = message
         messages = history + [
             {
                 "role": "user",
