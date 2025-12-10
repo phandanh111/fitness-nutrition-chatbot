@@ -14,6 +14,11 @@ from sentence_transformers import SentenceTransformer
 from pyvi.ViTokenizer import tokenize
 
 try:
+    import torch
+except ImportError:
+    torch = None
+
+try:
     from chromadb.errors import InvalidCollectionException as ChromaInvalidCollection
 except Exception:
     ChromaInvalidCollection = Exception
@@ -39,23 +44,80 @@ _global_chroma_client: chromadb.Client | None = None
 _global_embedding_model: SentenceTransformer | None = None
 
 
-def _get_embedding_model() -> SentenceTransformer:
+def _get_embedding_model(device: str = None) -> SentenceTransformer:
     """Lazy load embedding model (shared across all topics)."""
     global _global_embedding_model
     if _global_embedding_model is None:
-        _global_embedding_model = SentenceTransformer(DEFAULT_EMBED_MODEL)
+        # Auto-detect device: CPU on Mac, GPU on Linux (with fallback)
+        if device is None:
+            if torch is not None and torch.cuda.is_available():
+                try:
+                    # Test CUDA
+                    _ = torch.zeros(1).cuda()
+                    device = "cuda"
+                    print("[EmbeddingModel] Using CUDA device")
+                except Exception:
+                    device = "cpu"
+                    print("[EmbeddingModel] CUDA available but failed, using CPU")
+            else:
+                device = "cpu"
+                if torch is None:
+                    print("[EmbeddingModel] PyTorch not available, using CPU")
+                else:
+                    print("[EmbeddingModel] CUDA not available, using CPU")
+        
+        _global_embedding_model = SentenceTransformer(DEFAULT_EMBED_MODEL, device=device)
+        
+        # Set max_seq_length để tránh position_ids overflow (model thường có max 512)
+        try:
+            if hasattr(_global_embedding_model, 'max_seq_length'):
+                # Giữ nguyên max_seq_length của model hoặc set an toàn
+                current_max = getattr(_global_embedding_model, 'max_seq_length', 512)
+                if current_max > 512:
+                    _global_embedding_model.max_seq_length = 512
+                    print(f"[EmbeddingModel] Set max_seq_length=512 (was {current_max})")
+        except Exception:
+            pass
+    
     return _global_embedding_model
 
 
 class VietnameseEmbeddingFunction:
     """Adapter để dùng SentenceTransformer với Vietnamese tokenization cho ChromaDB."""
 
+    def _sanitize_text(self, text: str) -> str:
+        """Sanitize text: handle None, empty, and truncate if too long."""
+        if text is None:
+            text = ""
+        text = str(text).strip()
+        if not text:
+            text = " "  # Tránh text rỗng gây lỗi
+        # Truncate để tránh position_ids overflow (max ~512 tokens, ~800 chars an toàn cho tiếng Việt)
+        if len(text) > 800:
+            text = text[:790] + "...[truncated]"
+        return text
+
+    def _truncate_tokenized(self, tokenized_text: str, max_tokens: int = 500) -> str:
+        """Truncate tokenized text nếu quá dài (theo số tokens)."""
+        # Đếm số tokens (tokens được phân cách bởi space)
+        tokens = tokenized_text.split()
+        if len(tokens) > max_tokens:
+            tokens = tokens[:max_tokens]
+            return " ".join(tokens)
+        return tokenized_text
+
     def _tokenize_texts(self, texts: List[str]) -> List[str]:
-        """Tokenize Vietnamese texts."""
-        return [tokenize(text) for text in texts]
+        """Tokenize Vietnamese texts với validation và truncation."""
+        sanitized = [self._sanitize_text(text) for text in texts]
+        tokenized = [tokenize(text) for text in sanitized]
+        # Truncate tokenized texts nếu quá dài
+        return [self._truncate_tokenized(tok_text) for tok_text in tokenized]
 
     def _embed(self, texts: List[str]) -> List[List[float]]:
-        """Embed texts với Vietnamese tokenization."""
+        """Embed texts với Vietnamese tokenization và CUDA error handling."""
+        if not texts:
+            return []
+        
         model = _get_embedding_model()
         tokenized_texts = self._tokenize_texts(texts)
         embeddings = model.encode(tokenized_texts, convert_to_numpy=True)
@@ -218,8 +280,23 @@ class BaseRAG:
         if not ids:
             raise RuntimeError(f"Không có items hợp lệ để xây dựng index cho topic '{self.topic_name}'.")
 
-        collection.add(ids=ids, documents=documents, metadatas=metadatas)
-        print(f"[RAG] Đã xây dựng index cho topic '{self.topic_name}' với {len(ids)} items")
+        # Validation: đảm bảo độ dài khớp nhau
+        if not (len(ids) == len(documents) == len(metadatas)):
+            raise RuntimeError(
+                f"Data length mismatch for topic '{self.topic_name}': "
+                f"ids={len(ids)}, documents={len(documents)}, metadatas={len(metadatas)}"
+            )
+
+        try:
+            collection.add(ids=ids, documents=documents, metadatas=metadatas)
+            print(f"[RAG] Đã xây dựng index cho topic '{self.topic_name}' với {len(ids)} items")
+        except Exception as e:
+            print(f"[RAG] Lỗi khi thêm documents: {e}")
+            # Debug info
+            empty_docs = [i for i, doc in enumerate(documents) if not doc or (isinstance(doc, str) and not doc.strip())]
+            if empty_docs:
+                print(f"[RAG] Found {len(empty_docs)} empty documents at indices: {empty_docs[:10]}")
+            raise
 
     def semantic_search(self, query: str, top_k: int = 5) -> List[Dict]:
         """
