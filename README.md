@@ -256,12 +256,27 @@ Hệ thống tự động phân loại câu hỏi bằng semantic search:
 
 ## 🚀 Script tự động
 
+### Chạy với Frontend React (mặc định)
+
 Sử dụng `run.sh` để khởi động nhanh:
 
 ```bash
 chmod +x run.sh
 ./run.sh
 ```
+
+### Chạy với Streamlit (Đơn giản hơn)
+
+Nếu bạn muốn sử dụng Streamlit thay vì React frontend:
+
+```bash
+chmod +x run_streamlit.sh
+./run_streamlit.sh
+```
+
+Sau đó truy cập `http://localhost:8501` trong trình duyệt.
+
+**Lưu ý**: Streamlit app sẽ tự động gọi trực tiếp các services từ backend, không cần chạy FastAPI server riêng.
 
 ## 🔍 Troubleshooting
 
