@@ -1,11 +1,21 @@
 import os
 import sys
 import streamlit as st
+import logging
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Add backend directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -79,6 +89,7 @@ with st.sidebar:
     
     # Clear chat button
     if st.button("Xóa lịch sử chat", use_container_width=True):
+        logger.info(f"[SESSION] Clearing session: {st.session_state.session_id}")
         st.session_state.messages = []
         clear_conversation_session(st.session_state.session_id)
         # Reset welcome message
@@ -122,6 +133,14 @@ with chat_container:
 
 # Chat input
 if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
+    # Start timing
+    start_time = time.time()
+    session_id = st.session_state.session_id
+    
+    # Log incoming request
+    message_preview = prompt[:100] + "..." if len(prompt) > 100 else prompt
+    logger.info(f"[REQUEST] Session: {session_id[:20]}... | Message: {message_preview}")
+    
     # Add user message to chat
     user_message = {"role": "user", "content": prompt}
     st.session_state.messages.append(user_message)
@@ -133,27 +152,33 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
     with st.chat_message("assistant"):
         with st.spinner("Đang suy nghĩ..."):
             try:
-                session_id = st.session_state.session_id
                 message = prompt
                 history = get_conversation_history(session_id)
+                history_length = len(history)
                 
                 # Load system prompt
                 system_prompt = load_system_prompt()
                 
                 response_text = None
+                response_type = None
                 
                 # Check if query is about terms (điều khoản điều kiện)
                 try:
                     is_terms_query = is_terms_related_query(message)
                     if is_terms_query:
+                        logger.info(f"[QUERY_TYPE] Detected: TERMS | Session: {session_id[:20]}...")
                         try:
                             terms_response_text = generate_terms_response(message)
                             if terms_response_text:
                                 response_text = terms_response_text
+                                response_type = "TERMS"
                                 record_conversation_turn(session_id, message, response_text)
+                                logger.info(f"[RESPONSE] Type: TERMS | Length: {len(response_text)} chars")
                         except Exception as e:
+                            logger.error(f"[ERROR] Terms response generation failed: {e}", exc_info=True)
                             st.error(f"Lỗi khi xử lý câu hỏi về điều khoản: {e}")
                 except Exception as e:
+                    logger.debug(f"[QUERY_CHECK] Terms check failed: {e}")
                     pass
                 
                 # Check if query is about exercises
@@ -161,14 +186,19 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                     try:
                         is_exercise_query = is_exercise_related_query(message)
                         if is_exercise_query:
+                            logger.info(f"[QUERY_TYPE] Detected: EXERCISE | Session: {session_id[:20]}...")
                             try:
                                 exercise_response_text = generate_exercise_response(message)
                                 if exercise_response_text:
                                     response_text = exercise_response_text
+                                    response_type = "EXERCISE"
                                     record_conversation_turn(session_id, message, response_text)
+                                    logger.info(f"[RESPONSE] Type: EXERCISE | Length: {len(response_text)} chars")
                             except Exception as e:
+                                logger.error(f"[ERROR] Exercise response generation failed: {e}", exc_info=True)
                                 st.error(f"Lỗi khi xử lý câu hỏi về bài tập: {e}")
                     except Exception as e:
+                        logger.debug(f"[QUERY_CHECK] Exercise check failed: {e}")
                         pass
                 
                 # Check if query is about clubs
@@ -176,18 +206,24 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                     try:
                         is_club_query = is_club_related_query(message)
                         if is_club_query:
+                            logger.info(f"[QUERY_TYPE] Detected: CLUB | Session: {session_id[:20]}...")
                             try:
                                 club_response_text = generate_club_response(message)
                                 if club_response_text:
                                     response_text = club_response_text
+                                    response_type = "CLUB"
                                     record_conversation_turn(session_id, message, response_text)
+                                    logger.info(f"[RESPONSE] Type: CLUB | Length: {len(response_text)} chars")
                             except Exception as e:
+                                logger.error(f"[ERROR] Club response generation failed: {e}", exc_info=True)
                                 st.error(f"Lỗi khi xử lý câu hỏi về chi nhánh: {e}")
                     except Exception as e:
+                        logger.debug(f"[QUERY_CHECK] Club check failed: {e}")
                         pass
                 
                 # If no specific response, use general AI
                 if not response_text:
+                    logger.info(f"[QUERY_TYPE] Detected: GENERAL | Session: {session_id[:20]}... | History: {history_length} messages")
                     vietnamese_reminder = (
                         "VUI LÒNG CHỈ TRẢ LỜI BẰNG TIẾNG VIỆT. "
                         "Nếu lỡ trả lời bằng ngôn ngữ khác, bạn phải xin lỗi và trả lời lại bằng tiếng Việt. "
@@ -211,10 +247,14 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                         if not ai_response or not ai_response.strip():
                             ai_response = "Xin lỗi, mình không thể tạo phản hồi lúc này. Vui lòng thử lại sau."
                         response_text = ai_response
+                        response_type = "GENERAL"
                         record_conversation_turn(session_id, message, response_text)
+                        logger.info(f"[RESPONSE] Type: GENERAL | Length: {len(response_text)} chars")
                     except Exception as e:
+                        logger.error(f"[ERROR] General AI response failed: {e}", exc_info=True)
                         st.error(f"Lỗi khi lấy phản hồi từ AI: {e}")
                         response_text = "Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại sau."
+                        response_type = "ERROR"
                         record_conversation_turn(session_id, message, response_text)
                 
                 # Display response
@@ -222,9 +262,25 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                     st.markdown(response_text)
                     assistant_message = {"role": "assistant", "content": response_text}
                     st.session_state.messages.append(assistant_message)
+                    
+                    # Log successful response
+                    elapsed_time = time.time() - start_time
+                    logger.info(
+                        f"[SUCCESS] Session: {session_id[:20]}... | "
+                        f"Type: {response_type or 'UNKNOWN'} | "
+                        f"Response: {len(response_text)} chars | "
+                        f"Time: {elapsed_time:.2f}s"
+                    )
                 
             except Exception as e:
+                elapsed_time = time.time() - start_time
                 error_msg = "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau."
+                logger.error(
+                    f"[ERROR] Session: {session_id[:20]}... | "
+                    f"Exception: {str(e)} | "
+                    f"Time: {elapsed_time:.2f}s",
+                    exc_info=True
+                )
                 st.error(error_msg)
                 st.exception(e)
                 assistant_message = {"role": "assistant", "content": error_msg}
