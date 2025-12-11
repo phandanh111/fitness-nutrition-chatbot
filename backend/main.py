@@ -219,7 +219,7 @@ async def chat(chat_message: ChatMessage):
         print(f"[Chat] Unexpected error: {e}")
         import traceback
         traceback.print_exc()
-        # Trả về response lỗi thay vì raise HTTPException để frontend không crash
+        # Trả về response lỗi thay vì raise HTTPException
         try:
             error_response = "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau."
             record_conversation_turn(session_id, chat_message.message if hasattr(chat_message, 'message') else "", error_response)

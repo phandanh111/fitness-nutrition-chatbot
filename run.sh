@@ -1,6 +1,12 @@
 #!/bin/bash
 
-echo "🚀 Khởi động Fitness Nutrition Chatbot..."
+# LƯU Ý: Script này dành cho FastAPI server + React frontend (đã deprecated)
+# Khuyến nghị: Sử dụng run_streamlit.sh để chạy Streamlit app (đơn giản hơn)
+# 
+# Script này vẫn hoạt động nếu bạn muốn chạy FastAPI server riêng,
+# nhưng frontend React đã được xóa. Chỉ dùng script này nếu bạn cần API server.
+
+echo "🚀 Khởi động Fitness Nutrition Chatbot (FastAPI + React - DEPRECATED)..."
 
 # Kiểm tra Ollama
 if ! command -v ollama &> /dev/null; then

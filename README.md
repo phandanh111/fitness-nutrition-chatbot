@@ -9,24 +9,18 @@ Chatbot tư vấn thông tin về chi nhánh và bài tập của The New Gym s�
 - 📍 **Thông tin chi nhánh**: Tìm kiếm và tư vấn về các chi nhánh The New Gym
 - 💪 **Thông tin bài tập**: Tư vấn về các bài tập thể hình
 - 🎯 **Query Classification**: Tự động phân loại câu hỏi (clubs, exercises, general)
-- 📱 **Giao diện web**: React + Tailwind CSS
+- 📱 **Giao diện web**: Streamlit - đơn giản và dễ sử dụng
 - 🚀 **Chạy local**: Không cần API key, hoàn toàn miễn phí với Ollama
 
 ## 🛠️ Công nghệ
 
-### Backend
+### Backend & UI
 
-- **FastAPI**: Web framework
+- **Streamlit**: Web UI framework (Python-based)
 - **Ollama**: Local AI inference
 - **ChromaDB**: Vector database cho RAG
 - **Sentence Transformers**: Vietnamese embedding model (`dangvantuan/vietnamese-embedding`)
 - **Python 3.8+**
-
-### Frontend
-
-- **React**: UI framework
-- **Tailwind CSS**: Styling
-- **Axios**: HTTP client
 
 ## 🏗️ Kiến trúc
 
@@ -107,28 +101,23 @@ cp env.example .env
 # Chỉnh sửa .env nếu cần
 ```
 
-### 8. Chạy Backend
+### 8. Chạy Streamlit App
 
 ```bash
-python main.py
-```
+# Cách 1: Sử dụng script tự động (khuyến nghị)
+cd ..
+chmod +x run_streamlit.sh
+./run_streamlit.sh
 
-### 9. Cài đặt Frontend
-
-```bash
-cd ../frontend
-npm install
-```
-
-### 10. Chạy Frontend
-
-```bash
-npm start
+# Cách 2: Chạy thủ công
+cd backend
+source venv/bin/activate  # Windows: venv\Scripts\activate
+streamlit run streamlit_app.py
 ```
 
 ## 📖 Sử dụng
 
-1. Mở trình duyệt tại `http://localhost:3000`
+1. Mở trình duyệt tại `http://localhost:8501` (hoặc port được hiển thị)
 2. Chat với bot về:
    - Thông tin chi nhánh: "Bạn có chi nhánh nào ở Gò Vấp không?"
    - Thông tin bài tập: "Bài tập nào tốt cho ngực?"
@@ -163,7 +152,9 @@ HOST=0.0.0.0
 PORT=8000
 ```
 
-### API Endpoints
+### API Endpoints (Optional - FastAPI)
+
+Nếu bạn muốn sử dụng FastAPI server (chạy `python main.py`), các endpoints sau sẽ có sẵn:
 
 - `GET /`: Health check
 - `GET /ai-status`: Kiểm tra trạng thái AI
@@ -173,12 +164,15 @@ PORT=8000
 - `GET /clubs/search`: Tìm kiếm clubs
 - `DELETE /sessions/{session_id}`: Xóa lịch sử hội thoại
 
+**Lưu ý**: Streamlit app không cần FastAPI server, nó gọi trực tiếp các services từ Python.
+
 ## 📁 Cấu trúc Project
 
 ```
 chat-bot/
 ├── backend/
-│   ├── main.py                    # FastAPI app
+│   ├── streamlit_app.py          # Streamlit app (main UI)
+│   ├── main.py                    # FastAPI app (optional, for API)
 │   ├── requirements.txt           # Python dependencies
 │   ├── env.example               # Environment template
 │   ├── prompt_system.txt         # AI system prompt
@@ -209,18 +203,10 @@ chat-bot/
 │   │   └── rag_prompts.py        # RAG prompts
 │   └── scripts/
 │       └── build_club_index.py   # Build RAG index script
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx               # Main React component
-│   │   ├── api.js                # API client
-│   │   └── components/
-│   │       └── ChatBox.jsx       # Chat interface
-│   ├── package.json              # Node dependencies
-│   └── tailwind.config.js        # Tailwind config
 ├── docs/
 │   ├── rag_processing_flow.md    # RAG flow documentation
 │   └── how_vector_search_works.md # Vector search explanation
-├── run.sh                        # Quick start script
+├── run_streamlit.sh              # Quick start script (Streamlit)
 └── README.md                     # This file
 ```
 
@@ -256,18 +242,7 @@ Hệ thống tự động phân loại câu hỏi bằng semantic search:
 
 ## 🚀 Script tự động
 
-### Chạy với Frontend React (mặc định)
-
-Sử dụng `run.sh` để khởi động nhanh:
-
-```bash
-chmod +x run.sh
-./run.sh
-```
-
-### Chạy với Streamlit (Đơn giản hơn)
-
-Nếu bạn muốn sử dụng Streamlit thay vì React frontend:
+Sử dụng `run_streamlit.sh` để khởi động nhanh:
 
 ```bash
 chmod +x run_streamlit.sh
@@ -301,22 +276,19 @@ cd backend
 python scripts/build_club_index.py --force
 ```
 
-### Backend lỗi
+### Backend/Streamlit lỗi
 
 ```bash
 # Kiểm tra dependencies
+cd backend
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Kiểm tra environment
 cat .env
-```
 
-### Frontend lỗi
-
-```bash
-# Cài đặt lại dependencies
-rm -rf node_modules package-lock.json
-npm install
+# Chạy lại Streamlit
+streamlit run streamlit_app.py
 ```
 
 ## 📚 Tài liệu
