@@ -1,8 +1,12 @@
 """
 Script để xem vectors đã lưu trong ChromaDB bằng ChromaDB client.
+    
+Mặc định hiển thị collection `clubs`. Có thể xem thêm `exercises` hoặc `terms`
+qua tham số `--topic`.
 """
 
 import sys
+import argparse
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -10,36 +14,56 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     import chromadb
-    from chromadb.config import Settings
 except ImportError:
     print("❌ ChromaDB chưa được cài đặt.")
     print("💡 Hãy chạy: pip install chromadb")
     sys.exit(1)
 
-from rag.club_rag import (
-    CHROMA_DIR,
-    COLLECTION_NAME,
-    _get_collection,
-    VietnameseEmbeddingFunction,
-)
+from rag.base_rag import CHROMA_DIR, VietnameseEmbeddingFunction, _get_global_client
 
-def view_vectors():
+# Map topic -> collection name
+TOPIC_CONFIG = {
+    "clubs": "club_documents",
+    "exercises": "exercise_documents",
+    "terms": "terms_documents",
+}
+
+
+def _get_collection(topic: str, reset: bool = False):
+    """Lấy collection theo topic (compat cho scripts cũ)."""
+    if topic not in TOPIC_CONFIG:
+        raise ValueError(f"Topic không hỗ trợ: {topic}. Chọn một trong {list(TOPIC_CONFIG)}")
+
+    client = _get_global_client()
+    if reset:
+        try:
+            client.delete_collection(name=TOPIC_CONFIG[topic])
+        except Exception:
+            pass
+    return client.get_or_create_collection(
+        name=TOPIC_CONFIG[topic],
+        metadata={"hnsw:space": "cosine"},
+        embedding_function=VietnameseEmbeddingFunction(),
+    )
+
+
+def view_vectors(topic: str):
     """Xem vectors trong ChromaDB."""
     print("=" * 80)
-    print("CHROMADB VECTORS VIEWER")
+    print(f"CHROMADB VECTORS VIEWER — {topic}")
     print("=" * 80)
     print()
     
     if not CHROMA_DIR.exists():
         print(f"❌ ChromaDB directory không tồn tại: {CHROMA_DIR}")
-        print("💡 Hãy chạy: python backend/scripts/build_club_index.py để build index trước")
+        print("💡 Hãy chạy script build index tương ứng trước")
         return
     
     try:
-        collection = _get_collection()
+        collection = _get_collection(topic)
     except Exception as e:
         print(f"❌ Không thể kết nối ChromaDB: {e}")
-        print("💡 Hãy chạy: python backend/scripts/build_club_index.py để build index trước")
+        print("💡 Hãy chạy script build index tương ứng trước")
         return
     
     # Lấy tất cả documents
@@ -48,7 +72,7 @@ def view_vectors():
     
     if not results.get("ids"):
         print("❌ Không có dữ liệu trong ChromaDB")
-        print("💡 Hãy chạy: python backend/scripts/build_club_index.py để build index")
+        print("💡 Hãy chạy script build index tương ứng")
         return
     
     ids = results["ids"]
@@ -146,7 +170,7 @@ def view_vectors():
     print("=" * 80)
     print(f"Tổng số vectors: {len(ids)}")
     
-    # Đếm theo city
+    # Đếm theo city (hữu ích cho clubs, giữ lại cho compat)
     if metadatas:
         cities = {}
         for meta in metadatas:
@@ -162,8 +186,10 @@ def view_vectors():
     print("\n" + "=" * 80)
     print("💡 HƯỚNG DẪN:")
     print("-" * 80)
-    print("Để xem tất cả vectors, chạy:")
-    print("  python backend/scripts/view_vectors.py")
+    print("Để xem tất cả vectors, chạy (mặc định clubs):")
+    print("  python backend/scripts/view_vectors.py --topic clubs")
+    print("  python backend/scripts/view_vectors.py --topic exercises")
+    print("  python backend/scripts/view_vectors.py --topic terms")
     print()
     print("Để test query vectors, chạy:")
     print("  python backend/scripts/test_embeddings_simple.py")
@@ -173,5 +199,13 @@ def view_vectors():
 
 
 if __name__ == "__main__":
-    view_vectors()
+    parser = argparse.ArgumentParser(description="View ChromaDB vectors by topic")
+    parser.add_argument(
+        "--topic",
+        choices=list(TOPIC_CONFIG.keys()),
+        default="clubs",
+        help="Topic muốn xem (clubs/exercises/terms). Mặc định: clubs",
+    )
+    args = parser.parse_args()
+    view_vectors(topic=args.topic)
 
