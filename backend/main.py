@@ -8,6 +8,7 @@ from utils.ollama_client import ollama_client
 from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
 from services.terms_service import generate_terms_response, is_terms_related_query
+from services.price_service import generate_price_response, is_price_related_query
 from utils.clubs_client import clubs_client
 from services.llm_service import get_ai_response
 from services.conversation_service import (
@@ -168,9 +169,32 @@ async def chat(chat_message: ChatMessage):
                     print(f"[Chat] Error generating club response: {e}")
                     import traceback
                     traceback.print_exc()
-                    # Continue to general LLM
+                    # Continue to try prices or general LLM
         except Exception as e:
             print(f"[Chat] Error checking club query: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue to try prices or general LLM
+        
+        # Check if query is about prices
+        try:
+            is_price_query = is_price_related_query(message)
+            if is_price_query:
+                try:
+                    price_response_text = generate_price_response(message)
+                    if price_response_text:
+                        record_conversation_turn(session_id, message, price_response_text)
+                        return ChatResponse(
+                            response=price_response_text,
+                            session_id=session_id
+                        )
+                except Exception as e:
+                    print(f"[Chat] Error generating price response: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue to general LLM
+        except Exception as e:
+            print(f"[Chat] Error checking price query: {e}")
             import traceback
             traceback.print_exc()
             # Continue to general LLM

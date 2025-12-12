@@ -117,10 +117,12 @@ def _auto_register_topics():
         from rag.topics.clubs import register_clubs_topic
         from rag.topics.exercises import register_exercises_topic
         from rag.topics.terms import register_terms_topic
+        from rag.topics.prices import register_prices_topic
 
         register_clubs_topic()
         register_exercises_topic()
         register_terms_topic()
+        register_prices_topic()
     except ImportError as e:
         # Nếu chưa có topics, bỏ qua
         print(f"[UnifiedRAG] Warning: Could not import topics: {e}")

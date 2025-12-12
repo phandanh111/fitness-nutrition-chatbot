@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
 from services.terms_service import generate_terms_response, is_terms_related_query
+from services.price_service import generate_price_response, is_price_related_query
 from services.llm_service import get_ai_response
 from services.conversation_service import (
     get_history as get_conversation_history,
@@ -219,6 +220,26 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                                 st.error(f"Lỗi khi xử lý câu hỏi về chi nhánh: {e}")
                     except Exception as e:
                         logger.debug(f"[QUERY_CHECK] Club check failed: {e}")
+                        pass
+                
+                # Check if query is about prices
+                if not response_text:
+                    try:
+                        is_price_query = is_price_related_query(message)
+                        if is_price_query:
+                            logger.info(f"[QUERY_TYPE] Detected: PRICE | Session: {session_id[:20]}...")
+                            try:
+                                price_response_text = generate_price_response(message)
+                                if price_response_text:
+                                    response_text = price_response_text
+                                    response_type = "PRICE"
+                                    record_conversation_turn(session_id, message, response_text)
+                                    logger.info(f"[RESPONSE] Type: PRICE | Length: {len(response_text)} chars")
+                            except Exception as e:
+                                logger.error(f"[ERROR] Price response generation failed: {e}", exc_info=True)
+                                st.error(f"Lỗi khi xử lý câu hỏi về giá cả: {e}")
+                    except Exception as e:
+                        logger.debug(f"[QUERY_CHECK] Price check failed: {e}")
                         pass
                 
                 # If no specific response, use general AI

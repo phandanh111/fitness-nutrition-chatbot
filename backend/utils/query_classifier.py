@@ -7,9 +7,9 @@ from typing import Literal
 from rag.unified_rag import semantic_search
 
 
-def classify_query(message: str, top_k: int = 3, max_score: float = 0.80) -> Literal["clubs", "exercises", "terms", "general"]:
+def classify_query(message: str, top_k: int = 3, max_score: float = 0.80) -> Literal["clubs", "exercises", "terms", "prices", "general"]:
     """
-    Phân loại câu hỏi bằng cách so sánh semantic search scores giữa clubs, exercises, và terms.
+    Phân loại câu hỏi bằng cách so sánh semantic search scores giữa clubs, exercises, terms, và prices.
     Hoàn toàn dựa vào vector embeddings, không dùng keywords.
     
     Args:
@@ -22,15 +22,17 @@ def classify_query(message: str, top_k: int = 3, max_score: float = 0.80) -> Lit
         "clubs" nếu câu hỏi liên quan đến clubs (score < max_score và tốt nhất)
         "exercises" nếu câu hỏi liên quan đến exercises (score < max_score và tốt nhất)
         "terms" nếu câu hỏi liên quan đến điều khoản điều kiện (score < max_score và tốt nhất)
+        "prices" nếu câu hỏi liên quan đến giá cả (score < max_score và tốt nhất)
         "general" nếu tất cả scores đều > max_score hoặc không có kết quả
     """
     if not message or not message.strip():
         return "general"
     
-    # Thử semantic search cho cả ba collections
+    # Thử semantic search cho cả bốn collections
     club_results = []
     exercise_results = []
     terms_results = []
+    prices_results = []
     
     try:
         club_results = semantic_search("clubs", message, top_k=top_k)
@@ -50,20 +52,28 @@ def classify_query(message: str, top_k: int = 3, max_score: float = 0.80) -> Lit
         print(f"[QueryClassifier] Terms search failed: {e}")
         terms_results = []
     
+    try:
+        prices_results = semantic_search("prices", message, top_k=top_k)
+    except Exception as e:
+        print(f"[QueryClassifier] Prices search failed: {e}")
+        prices_results = []
+    
     # Nếu không có kết quả nào, trả về general
-    if not club_results and not exercise_results and not terms_results:
+    if not club_results and not exercise_results and not terms_results and not prices_results:
         return "general"
     
     # Tính best score (score nhỏ nhất = tương đồng nhất) cho mỗi collection
     best_club_score = min((r.get("score") or 1.0 for r in club_results), default=1.0) if club_results else 1.0
     best_exercise_score = min((r.get("score") or 1.0 for r in exercise_results), default=1.0) if exercise_results else 1.0
     best_terms_score = min((r.get("score") or 1.0 for r in terms_results), default=1.0) if terms_results else 1.0
+    best_prices_score = min((r.get("score") or 1.0 for r in prices_results), default=1.0) if prices_results else 1.0
     
     # Tạo dict để dễ so sánh
     scores = {
         "clubs": best_club_score,
         "exercises": best_exercise_score,
         "terms": best_terms_score,
+        "prices": best_prices_score,
     }
     
     # Lọc các scores tốt (score < max_score)
@@ -106,6 +116,17 @@ def is_terms_query(message: str) -> bool:
         return classify_query(message) == "terms"
     except Exception as e:
         print(f"[QueryClassifier] Error in is_terms_query: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def is_price_query(message: str) -> bool:
+    """Kiểm tra xem câu hỏi có phải về giá cả không."""
+    try:
+        return classify_query(message) == "prices"
+    except Exception as e:
+        print(f"[QueryClassifier] Error in is_price_query: {e}")
         import traceback
         traceback.print_exc()
         return False

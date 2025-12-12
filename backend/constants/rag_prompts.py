@@ -15,7 +15,7 @@ def get_rag_system_prompt(context_type: str = "general") -> str:
     Lấy RAG system prompt với context type cụ thể.
     
     Args:
-        context_type: Loại context ("clubs", "exercises", hoặc "general")
+        context_type: Loại context ("clubs", "exercises", "terms", "prices", hoặc "general")
     
     Returns:
         System prompt phù hợp với context type
@@ -44,6 +44,18 @@ def get_rag_system_prompt(context_type: str = "general") -> str:
             "Nếu ngữ cảnh không chứa thông tin về điều khoản được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về điều khoản này' và KHÔNG được liệt kê các thông tin không có trong ngữ cảnh. "
             "Trả lời một cách TỰ NHIÊN, mạch lạc, dễ hiểu - như đang giải thích trực tiếp cho khách hàng. "
             "KHÔNG được trích dẫn nguyên văn, KHÔNG đề cập đến 'đoạn', 'phần', 'mục' trong ngữ cảnh. "
+            "Chỉ tổng hợp và trình bày thông tin một cách tự nhiên, thân thiện, chuyên nghiệp."
+        )
+    elif context_type == "prices":
+        return (
+            RAG_SYSTEM_PROMPT_BASE +
+            "Bạn đang trả lời về chính sách giá dịch vụ của The New Gym, giống như một nhân viên tư vấn đang giải thích giá cả cho khách hàng một cách thân thiện và rõ ràng. "
+            "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về giá cả, gói dịch vụ, phương thức thanh toán, hoặc bất kỳ thông tin nào khác. "
+            "Nếu ngữ cảnh không chứa thông tin về giá cả được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về giá cả này' và KHÔNG được liệt kê các thông tin không có trong ngữ cảnh. "
+            "Trả lời một cách TỰ NHIÊN, mạch lạc, dễ hiểu - như đang giải thích trực tiếp cho khách hàng. "
+            "KHÔNG được trích dẫn nguyên văn, KHÔNG đề cập đến 'đoạn', 'phần', 'mục' trong ngữ cảnh. "
+            "Khi trả lời về giá, hãy nêu rõ: loại gói (1 tháng, 3 tháng, 6 tháng), phương thức thanh toán (tự động/tiền mặt), phạm vi tập (một chi nhánh/tất cả chi nhánh), và giá cụ thể. "
+            "Nếu có mã giảm giá hoặc ưu đãi, hãy nêu rõ mã và điều kiện áp dụng. "
             "Chỉ tổng hợp và trình bày thông tin một cách tự nhiên, thân thiện, chuyên nghiệp."
         )
     else:
