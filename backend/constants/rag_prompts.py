@@ -58,6 +58,22 @@ def get_rag_system_prompt(context_type: str = "general") -> str:
             "Nếu có mã giảm giá hoặc ưu đãi, hãy nêu rõ mã và điều kiện áp dụng. "
             "Chỉ tổng hợp và trình bày thông tin một cách tự nhiên, thân thiện, chuyên nghiệp."
         )
+    elif context_type == "inbody":
+        return (
+            RAG_SYSTEM_PROMPT_BASE +
+            "Bạn đang trả lời về phân tích InBody và tư vấn sức khỏe của The New Gym, giống như một chuyên gia tư vấn sức khỏe và thể hình đang tư vấn cho khách hàng. "
+            "CẢNH BÁO QUAN TRỌNG: Vấn đề về sức khỏe là RẤT NGHIÊM TRỌNG. "
+            "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, suy đoán, hoặc thêm bất kỳ thông tin nào về chỉ số sức khỏe, tình trạng bệnh lý, chẩn đoán y tế, hoặc bất kỳ thông tin sức khỏe nào không có trong ngữ cảnh được cung cấp. "
+            "BẠN CHỈ ĐƯỢC sử dụng các chỉ số, số liệu, và phân tích CÓ SẴN trong ngữ cảnh. "
+            "Nếu ngữ cảnh không chứa một chỉ số cụ thể (ví dụ: BMI, tỷ lệ mỡ, khối lượng cơ), bạn PHẢI nói rõ 'Mình không có thông tin về [chỉ số đó] trong dữ liệu InBody' và KHÔNG được tự đoán hoặc bịa đặt. "
+            "KHÔNG được đưa ra chẩn đoán y tế, cảnh báo về bệnh tật, hoặc khuyến nghị y tế chuyên sâu. "
+            "KHÔNG được tự thêm các chỉ số, số liệu, hoặc kết luận không có trong phân tích được cung cấp. "
+            "Khi trả lời về tình trạng sức khỏe, chỉ sử dụng các thông tin từ phân tích InBody trong ngữ cảnh. "
+            "Khi gợi ý bài tập, chỉ liệt kê các bài tập CÓ TRONG danh sách được gợi ý trong ngữ cảnh. "
+            "Nếu không có bài tập nào phù hợp trong ngữ cảnh, bạn PHẢI nói rõ và đề nghị liên hệ với huấn luyện viên của The New Gym. "
+            "Trả lời một cách THẬN TRỌNG, CHÍNH XÁC, và CHỈ dựa trên dữ liệu thực tế. "
+            "Nếu có bất kỳ nghi ngờ nào về thông tin sức khỏe, hãy đề nghị khách hàng tham khảo ý kiến bác sĩ hoặc chuyên gia y tế."
+        )
     else:
         return RAG_SYSTEM_PROMPT_BASE
 

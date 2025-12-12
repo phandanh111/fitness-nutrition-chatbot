@@ -24,6 +24,7 @@ from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
 from services.terms_service import generate_terms_response, is_terms_related_query
 from services.price_service import generate_price_response, is_price_related_query
+from services.inbody_service import generate_inbody_response, is_inbody_related_query
 from services.llm_service import get_ai_response
 from services.conversation_service import (
     get_history as get_conversation_history,
@@ -200,6 +201,26 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                                 st.error(f"Lỗi khi xử lý câu hỏi về bài tập: {e}")
                     except Exception as e:
                         logger.debug(f"[QUERY_CHECK] Exercise check failed: {e}")
+                        pass
+                
+                # Check if query is about InBody
+                if not response_text:
+                    try:
+                        is_inbody_query = is_inbody_related_query(message)
+                        if is_inbody_query:
+                            logger.info(f"[QUERY_TYPE] Detected: INBODY | Session: {session_id[:20]}...")
+                            try:
+                                inbody_response_text = generate_inbody_response(message)
+                                if inbody_response_text:
+                                    response_text = inbody_response_text
+                                    response_type = "INBODY"
+                                    record_conversation_turn(session_id, message, response_text)
+                                    logger.info(f"[RESPONSE] Type: INBODY | Length: {len(response_text)} chars")
+                            except Exception as e:
+                                logger.error(f"[ERROR] InBody response generation failed: {e}", exc_info=True)
+                                st.error(f"Lỗi khi xử lý câu hỏi về InBody: {e}")
+                    except Exception as e:
+                        logger.debug(f"[QUERY_CHECK] InBody check failed: {e}")
                         pass
                 
                 # Check if query is about clubs

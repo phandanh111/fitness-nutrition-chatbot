@@ -1,4 +1,4 @@
-"""Utility script to (re)build the club, exercise, terms, and prices semantic indexes."""
+"""Utility script to (re)build the club, exercise, terms, prices, and inbody semantic indexes."""
 
 import argparse
 from pathlib import Path
@@ -12,7 +12,7 @@ from rag.unified_rag import build_index  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build or refresh RAG indexes for clubs, exercises, terms, and prices.")
+    parser = argparse.ArgumentParser(description="Build or refresh RAG indexes for clubs, exercises, terms, prices, and inbody.")
     parser.add_argument(
         "--force",
         action="store_true",
@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Bỏ qua việc build prices index.",
     )
+    parser.add_argument(
+        "--skip-inbody",
+        action="store_true",
+        help="Bỏ qua việc build inbody index.",
+    )
     return parser.parse_args()
 
 
@@ -57,6 +62,9 @@ def main() -> None:
         if not args.skip_prices:
             print("  → Building prices index...")
             build_index("prices", force_refresh=True)
+        if not args.skip_inbody:
+            print("  → Building inbody index...")
+            build_index("inbody", force_refresh=True)
     else:
         print("Updating semantic indexes (incremental)...")
         print("  → Updating club index...")
@@ -70,6 +78,9 @@ def main() -> None:
         if not args.skip_prices:
             print("  → Updating prices index...")
             build_index("prices", force_refresh=False)
+        if not args.skip_inbody:
+            print("  → Updating inbody index...")
+            build_index("inbody", force_refresh=False)
     print("Done.")
 
 
