@@ -7,7 +7,7 @@ from typing import Literal
 from rag.unified_rag import semantic_search
 
 
-def classify_query(message: str, top_k: int = 3, max_score: float = 0.80) -> Literal["clubs", "exercises", "terms", "prices", "inbody", "general"]:
+def classify_query(message: str, top_k: int = 10, max_score: float = 0.80) -> Literal["clubs", "exercises", "terms", "prices", "inbody", "general"]:
     """
     Phân loại câu hỏi bằng cách so sánh semantic search scores giữa clubs, exercises, terms, prices, và inbody.
     Hoàn toàn dựa vào vector embeddings, không dùng keywords.

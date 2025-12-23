@@ -167,6 +167,7 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                 # Check if query is about terms (điều khoản điều kiện)
                 try:
                     is_terms_query = is_terms_related_query(message)
+                    is_terms_query = False
                     if is_terms_query:
                         logger.info(f"[QUERY_TYPE] Detected: TERMS | Session: {session_id[:20]}...")
                         try:
@@ -187,6 +188,7 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                 if not response_text:
                     try:
                         is_exercise_query = is_exercise_related_query(message)
+                        is_exercise_query =True
                         if is_exercise_query:
                             logger.info(f"[QUERY_TYPE] Detected: EXERCISE | Session: {session_id[:20]}...")
                             try:

@@ -134,8 +134,10 @@ async def chat(chat_message: ChatMessage):
         # Check if query is about exercises
         try:
             is_exercise_query = is_exercise_related_query(message)
+            is_exercise_query = True
             if is_exercise_query:
                 try:
+                    print(f"[Chat] Generating exercise response for message: {message}")
                     exercise_response_text = generate_exercise_response(message)
                     if exercise_response_text:
                         record_conversation_turn(session_id, message, exercise_response_text)

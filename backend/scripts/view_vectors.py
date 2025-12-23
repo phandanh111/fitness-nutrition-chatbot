@@ -1,8 +1,8 @@
 """
 Script để xem vectors đã lưu trong ChromaDB bằng ChromaDB client.
     
-Mặc định hiển thị collection `clubs`. Có thể xem thêm `exercises` hoặc `terms`
-qua tham số `--topic`.
+Mặc định hiển thị collection `clubs`. Có thể xem thêm `exercises`, `terms`,
+hoặc `inbody` qua tham số `--topic`.
 """
 
 import sys
@@ -26,6 +26,7 @@ TOPIC_CONFIG = {
     "clubs": "club_documents",
     "exercises": "exercise_documents",
     "terms": "terms_documents",
+    "inbody": "inbody_documents",
 }
 
 
@@ -190,6 +191,7 @@ def view_vectors(topic: str):
     print("  python backend/scripts/view_vectors.py --topic clubs")
     print("  python backend/scripts/view_vectors.py --topic exercises")
     print("  python backend/scripts/view_vectors.py --topic terms")
+    print("  python backend/scripts/view_vectors.py --topic inbody")
     print()
     print("Để test query vectors, chạy:")
     print("  python backend/scripts/test_embeddings_simple.py")

@@ -10,7 +10,7 @@ from rag.exercise_rag import semantic_search, parse_exercises_from_markdown
 from services.llm_service import get_ai_response
 from constants.rag_prompts import get_rag_system_prompt
 
-MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "4"))
+MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
 
 COUNT_QUERY_PATTERNS = [
     r"bao nhiêu",
@@ -98,7 +98,7 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
         "TUYỆT ĐỐI KHÔNG được tự động gợi ý các bài tập hoặc chi nhánh nếu câu hỏi không liên quan đến thông tin trong ngữ cảnh.",
         "Nếu câu hỏi về giờ mở cửa, giá cả, dịch vụ, hoặc thông tin khác không có trong ngữ cảnh, bạn PHẢI thừa nhận rằng mình không có thông tin và đề nghị liên hệ trực tiếp với The New Gym.",
-        "- Liệt kê tối đa 3 bài tập phù hợp nhất, mỗi bài tập gồm tên, nhóm cơ, mô tả, lợi ích, thiết bị - CHỈ khi thông tin này có trong ngữ cảnh VÀ liên quan trực tiếp đến câu hỏi.",
+        "- CHỈ khi thông tin này có trong ngữ cảnh VÀ liên quan trực tiếp đến câu hỏi.",
         "- Giữ giọng điệu mềm mại, gần gũi, dùng đại từ 'mình'/'bạn', tránh nhắc lặp lại cùng một câu.",
         "- Nếu người dùng hỏi về nhóm cơ cụ thể, hãy tập trung vào các bài tập cho nhóm cơ đó.",
     ]
@@ -109,10 +109,10 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         f"Ngữ cảnh:\n{context_text}\n\n"
         f"Hướng dẫn:\n" + "\n".join(guidance_lines) + "\n\n"
         f"Câu hỏi của khách: {question}\n\n"
-        f"LƯU Ý CUỐI CÙNG: Nếu câu hỏi về một bài tập hoặc nhóm cơ cụ thể nhưng trong ngữ cảnh không có thông tin, bạn PHẢI trả lời 'Mình chưa tìm thấy thông tin về [bài tập/nhóm cơ đó]' và KHÔNG được liệt kê các bài tập khác như thể chúng phù hợp. "
-        f"Nếu câu hỏi KHÔNG liên quan đến thông tin bài tập trong ngữ cảnh (ví dụ: giờ mở cửa, giá cả, dịch vụ), bạn PHẢI trả lời trực tiếp về câu hỏi đó và KHÔNG được tự động gợi ý các bài tập hoặc chi nhánh."
+        f"LƯU Ý CUỐI CÙNG: Nếu câu hỏi KHÔNG liên quan đến thông tin bài tập trong ngữ cảnh, bạn PHẢI trả lời trực tiếp về câu hỏi đó và KHÔNG được tự động gợi ý các bài tập khác."
     )
     messages = [{"role": "user", "content": prompt}]
+    print(f"[ExerciseService] Messages: {messages}")
     return get_ai_response(messages, get_rag_system_prompt("exercises"))
 
 
@@ -131,12 +131,14 @@ def is_exercise_related_query(message: str) -> bool:
 def generate_exercise_response(message: str) -> str:
     """Tạo câu trả lời cho câu hỏi về bài tập."""
     # Kiểm tra câu hỏi về số lượng
+    print(f"[ExerciseService] Generating exercise response for message: {message}")
     if is_count_query(message):
         all_exercises = get_all_exercises()
         if not all_exercises:
             return "Xin lỗi, hiện chưa có dữ liệu về các bài tập trong hệ thống."
         
         total_context = build_total_counts_context(all_exercises)
+        print(f"[ExerciseService] Total context: {total_context}")
         return generate_answer_from_context(
             message,
             [total_context],
@@ -146,7 +148,7 @@ def generate_exercise_response(message: str) -> str:
     # Thử semantic search trước
     semantic_results: List[Dict] = []
     try:
-        semantic_results = semantic_search(message, top_k=MAX_CONTEXT_EXERCISES)
+        semantic_results = semantic_search(message, top_k=10)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
         import traceback
