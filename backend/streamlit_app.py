@@ -20,11 +20,7 @@ logger = logging.getLogger(__name__)
 # Add backend directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
-from services.terms_service import generate_terms_response, is_terms_related_query
-from services.price_service import generate_price_response, is_price_related_query
-from services.inbody_service import generate_inbody_response, is_inbody_related_query
 from services.llm_service import get_ai_response
 from services.conversation_service import (
     get_history as get_conversation_history,
@@ -76,7 +72,7 @@ if "messages" not in st.session_state:
     # Welcome message
     welcome_msg = {
         "role": "assistant",
-        "content": "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Thông tin về các chi nhánh/clubs\n• Tư vấn dinh dưỡng và thể hình\n• Câu hỏi về dịch vụ của The New Gym\n• Tư vấn về chương trình tập luyện\n\nBạn cần hỗ trợ gì hôm nay?"
+        "content": "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Tư vấn bài tập gym và chương trình tập luyện\n• Gợi ý bài tập theo nhóm cơ, độ khó\n• Thông tin về lượng kcal tiêu thụ của từng bài\n\nBạn cần hỗ trợ gì hôm nay?"
     }
     st.session_state.messages.append(welcome_msg)
 
@@ -164,31 +160,10 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                 response_text = None
                 response_type = None
                 
-                # Check if query is about terms (điều khoản điều kiện)
-                try:
-                    is_terms_query = is_terms_related_query(message)
-                    is_terms_query = False
-                    if is_terms_query:
-                        logger.info(f"[QUERY_TYPE] Detected: TERMS | Session: {session_id[:20]}...")
-                        try:
-                            terms_response_text = generate_terms_response(message)
-                            if terms_response_text:
-                                response_text = terms_response_text
-                                response_type = "TERMS"
-                                record_conversation_turn(session_id, message, response_text)
-                                logger.info(f"[RESPONSE] Type: TERMS | Length: {len(response_text)} chars")
-                        except Exception as e:
-                            logger.error(f"[ERROR] Terms response generation failed: {e}", exc_info=True)
-                            st.error(f"Lỗi khi xử lý câu hỏi về điều khoản: {e}")
-                except Exception as e:
-                    logger.debug(f"[QUERY_CHECK] Terms check failed: {e}")
-                    pass
-                
                 # Check if query is about exercises
                 if not response_text:
                     try:
                         is_exercise_query = is_exercise_related_query(message)
-                        is_exercise_query =True
                         if is_exercise_query:
                             logger.info(f"[QUERY_TYPE] Detected: EXERCISE | Session: {session_id[:20]}...")
                             try:
@@ -203,66 +178,6 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                                 st.error(f"Lỗi khi xử lý câu hỏi về bài tập: {e}")
                     except Exception as e:
                         logger.debug(f"[QUERY_CHECK] Exercise check failed: {e}")
-                        pass
-                
-                # Check if query is about InBody
-                if not response_text:
-                    try:
-                        is_inbody_query = is_inbody_related_query(message)
-                        if is_inbody_query:
-                            logger.info(f"[QUERY_TYPE] Detected: INBODY | Session: {session_id[:20]}...")
-                            try:
-                                inbody_response_text = generate_inbody_response(message)
-                                if inbody_response_text:
-                                    response_text = inbody_response_text
-                                    response_type = "INBODY"
-                                    record_conversation_turn(session_id, message, response_text)
-                                    logger.info(f"[RESPONSE] Type: INBODY | Length: {len(response_text)} chars")
-                            except Exception as e:
-                                logger.error(f"[ERROR] InBody response generation failed: {e}", exc_info=True)
-                                st.error(f"Lỗi khi xử lý câu hỏi về InBody: {e}")
-                    except Exception as e:
-                        logger.debug(f"[QUERY_CHECK] InBody check failed: {e}")
-                        pass
-                
-                # Check if query is about clubs
-                if not response_text:
-                    try:
-                        is_club_query = is_club_related_query(message)
-                        if is_club_query:
-                            logger.info(f"[QUERY_TYPE] Detected: CLUB | Session: {session_id[:20]}...")
-                            try:
-                                club_response_text = generate_club_response(message)
-                                if club_response_text:
-                                    response_text = club_response_text
-                                    response_type = "CLUB"
-                                    record_conversation_turn(session_id, message, response_text)
-                                    logger.info(f"[RESPONSE] Type: CLUB | Length: {len(response_text)} chars")
-                            except Exception as e:
-                                logger.error(f"[ERROR] Club response generation failed: {e}", exc_info=True)
-                                st.error(f"Lỗi khi xử lý câu hỏi về chi nhánh: {e}")
-                    except Exception as e:
-                        logger.debug(f"[QUERY_CHECK] Club check failed: {e}")
-                        pass
-                
-                # Check if query is about prices
-                if not response_text:
-                    try:
-                        is_price_query = is_price_related_query(message)
-                        if is_price_query:
-                            logger.info(f"[QUERY_TYPE] Detected: PRICE | Session: {session_id[:20]}...")
-                            try:
-                                price_response_text = generate_price_response(message)
-                                if price_response_text:
-                                    response_text = price_response_text
-                                    response_type = "PRICE"
-                                    record_conversation_turn(session_id, message, response_text)
-                                    logger.info(f"[RESPONSE] Type: PRICE | Length: {len(response_text)} chars")
-                            except Exception as e:
-                                logger.error(f"[ERROR] Price response generation failed: {e}", exc_info=True)
-                                st.error(f"Lỗi khi xử lý câu hỏi về giá cả: {e}")
-                    except Exception as e:
-                        logger.debug(f"[QUERY_CHECK] Price check failed: {e}")
                         pass
                 
                 # If no specific response, use general AI

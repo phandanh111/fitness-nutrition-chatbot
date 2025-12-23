@@ -5,12 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from utils.ollama_client import ollama_client
-from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
-from services.terms_service import generate_terms_response, is_terms_related_query
-from services.price_service import generate_price_response, is_price_related_query
-from services.inbody_service import generate_inbody_response, is_inbody_related_query
-from utils.clubs_client import clubs_client
 from services.llm_service import get_ai_response
 from services.conversation_service import (
     get_history as get_conversation_history,
@@ -108,36 +103,11 @@ async def chat(chat_message: ChatMessage):
         # Load system prompt
         system_prompt = load_system_prompt()
         
-        # Check if query is about terms (điều khoản điều kiện)
-        try:
-            is_terms_query = is_terms_related_query(message)
-            if is_terms_query:
-                try:
-                    terms_response_text = generate_terms_response(message)
-                    if terms_response_text:
-                        record_conversation_turn(session_id, message, terms_response_text)
-                        return ChatResponse(
-                            response=terms_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating terms response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to try other topics or general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking terms query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try other topics or general LLM
-        
         # Check if query is about exercises
         try:
             is_exercise_query = is_exercise_related_query(message)
-            is_exercise_query = True
             if is_exercise_query:
                 try:
-                    print(f"[Chat] Generating exercise response for message: {message}")
                     exercise_response_text = generate_exercise_response(message)
                     if exercise_response_text:
                         record_conversation_turn(session_id, message, exercise_response_text)
@@ -152,75 +122,6 @@ async def chat(chat_message: ChatMessage):
                     # Continue to try clubs or general LLM
         except Exception as e:
             print(f"[Chat] Error checking exercise query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try clubs or general LLM
-        
-        # Check if query is about InBody
-        try:
-            is_inbody_query = is_inbody_related_query(message)
-            if is_inbody_query:
-                try:
-                    inbody_response_text = generate_inbody_response(message)
-                    if inbody_response_text:
-                        record_conversation_turn(session_id, message, inbody_response_text)
-                        return ChatResponse(
-                            response=inbody_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating inbody response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to try clubs or general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking inbody query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try clubs or general LLM
-        
-        # Check if query is about clubs
-        try:
-            is_club_query = is_club_related_query(message)
-            if is_club_query:
-                try:
-                    club_response_text = generate_club_response(message)
-                    if club_response_text:
-                        record_conversation_turn(session_id, message, club_response_text)
-                        return ChatResponse(
-                            response=club_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating club response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to try prices or general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking club query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try prices or general LLM
-        
-        # Check if query is about prices
-        try:
-            is_price_query = is_price_related_query(message)
-            if is_price_query:
-                try:
-                    price_response_text = generate_price_response(message)
-                    if price_response_text:
-                        record_conversation_turn(session_id, message, price_response_text)
-                        return ChatResponse(
-                            response=price_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating price response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking price query: {e}")
             import traceback
             traceback.print_exc()
             # Continue to general LLM
