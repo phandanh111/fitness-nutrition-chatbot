@@ -101,6 +101,10 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         "- CHỈ khi thông tin này có trong ngữ cảnh VÀ liên quan trực tiếp đến câu hỏi.",
         "- Giữ giọng điệu mềm mại, gần gũi, dùng đại từ 'mình'/'bạn', tránh nhắc lặp lại cùng một câu.",
         "- Nếu người dùng hỏi về nhóm cơ cụ thể, hãy tập trung vào các bài tập cho nhóm cơ đó.",
+        "- Nếu người dùng hỏi về lịch tập / lộ trình trong 1 tuần (ví dụ: từ Thứ 2 đến Chủ nhật), HÃY TRẢ LỜI THEO ĐỊNH DẠNG LỊCH: mỗi ngày một dòng hoặc một đoạn rõ ràng, dạng 'Thứ 2:', 'Thứ 3:', ..., 'Chủ nhật:'.",
+        "- Với lịch 1 tuần, hãy đảm bảo có ÍT NHẤT 1–2 NGÀY NGHỈ PHỤC HỒI.",
+        "- Với mỗi ngày, gợi ý 1–3 bài tập phù hợp, mô tả ngắn gọn (tên bài, nhóm cơ chính, và mục tiêu như tăng cơ, tăng sức bền…).",
+        "- ƯU TIÊN trình bày rõ ràng, dễ đọc: mỗi ngày trên một dòng/một đoạn, có tiêu đề ngày và xuống dòng giữa các ngày.",
     ]
     if extra_guidance:
         guidance_lines.append(f"- {extra_guidance}")
