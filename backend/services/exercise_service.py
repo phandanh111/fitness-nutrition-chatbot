@@ -96,15 +96,7 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
         "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
         "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
-        "TUYỆT ĐỐI KHÔNG được tự động gợi ý các bài tập hoặc chi nhánh nếu câu hỏi không liên quan đến thông tin trong ngữ cảnh.",
-        "Nếu câu hỏi về giờ mở cửa, giá cả, dịch vụ, hoặc thông tin khác không có trong ngữ cảnh, bạn PHẢI thừa nhận rằng mình không có thông tin và đề nghị liên hệ trực tiếp với The New Gym.",
-        "- CHỈ khi thông tin này có trong ngữ cảnh VÀ liên quan trực tiếp đến câu hỏi.",
-        "- Giữ giọng điệu mềm mại, gần gũi, dùng đại từ 'mình'/'bạn', tránh nhắc lặp lại cùng một câu.",
-        "- Nếu người dùng hỏi về nhóm cơ cụ thể, hãy tập trung vào các bài tập cho nhóm cơ đó.",
-        "- Nếu người dùng hỏi về lịch tập / lộ trình trong 1 tuần (ví dụ: từ Thứ 2 đến Chủ nhật), HÃY TRẢ LỜI THEO ĐỊNH DẠNG LỊCH: mỗi ngày một dòng hoặc một đoạn rõ ràng, dạng 'Thứ 2:', 'Thứ 3:', ..., 'Chủ nhật:'.",
-        "- Với lịch 1 tuần, hãy đảm bảo có ÍT NHẤT 1–2 NGÀY NGHỈ PHỤC HỒI.",
-        "- Với mỗi ngày, gợi ý 1–3 bài tập phù hợp, mô tả ngắn gọn (tên bài, nhóm cơ chính, và mục tiêu như tăng cơ, tăng sức bền…).",
-        "- ƯU TIÊN trình bày rõ ràng, dễ đọc: mỗi ngày trên một dòng/một đoạn, có tiêu đề ngày và xuống dòng giữa các ngày.",
+        "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
     ]
     if extra_guidance:
         guidance_lines.append(f"- {extra_guidance}")
@@ -113,7 +105,6 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         f"Ngữ cảnh:\n{context_text}\n\n"
         f"Hướng dẫn:\n" + "\n".join(guidance_lines) + "\n\n"
         f"Câu hỏi của khách: {question}\n\n"
-        f"LƯU Ý CUỐI CÙNG: Nếu câu hỏi KHÔNG liên quan đến thông tin bài tập trong ngữ cảnh, bạn PHẢI trả lời trực tiếp về câu hỏi đó và KHÔNG được tự động gợi ý các bài tập khác."
     )
     messages = [{"role": "user", "content": prompt}]
     print(f"[ExerciseService] Messages: {messages}")

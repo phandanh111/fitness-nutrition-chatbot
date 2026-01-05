@@ -85,21 +85,17 @@ class ExercisesTextBuilder(TopicTextBuilder):
         # Tên bài tập (ưu tiên tiếng Việt)
         name_vi = item.get("nameVi", "")
         name_en = item.get("nameEn", "")
-        if name_vi:
-            parts.append(f"Bài tập: {name_vi}")
-            if name_en and name_en != name_vi:
-                parts.append(f"Tên tiếng Anh: {name_en}")
-        elif name_en:
-            parts.append(f"Bài tập: {name_en}")
-        elif item.get("name"):
-            parts.append(f"Bài tập: {item.get('name')}")
+        name_display = name_vi if name_vi else (name_en if name_en else item.get("name", ""))
+        
+        if name_display:
+            parts.append(f"Bài tập: {name_display}")
 
         # Nhóm cơ
         muscle_group = item.get("muscleGroup", "")
         if muscle_group:
             parts.append(f"Nhóm cơ: {muscle_group}")
 
-        # Độ khó (quan trọng cho việc tìm kiếm bài tập cho người mới)
+        # Độ khó
         difficulty = item.get("difficulty", "")
         if difficulty:
             parts.append(f"Độ khó: {difficulty}")
@@ -124,7 +120,6 @@ class ExercisesMetadataBuilder(TopicMetadataBuilder):
             "muscleGroup": item.get("muscleGroup", ""),
             "difficulty": item.get("difficulty", ""),
             "calories": item.get("calories", ""),
-            "equipment": item.get("equipment", ""),
         }
 
 
