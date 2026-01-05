@@ -11,6 +11,8 @@ from services.conversation_service import (
     get_history as get_conversation_history,
     record_turn as record_conversation_turn,
     clear_session as clear_conversation_session,
+    set_inbody_data,
+    get_inbody_data,
 )
 
 # Load environment variables
@@ -100,6 +102,18 @@ async def chat(chat_message: ChatMessage):
         message = chat_message.message
         history = get_conversation_history(session_id)
         
+        # Parse InBody data từ message nếu có
+        from services.exercise_service import parse_inbody_from_message
+        inbody_data = parse_inbody_from_message(message)
+        if inbody_data:
+            print(f"[Chat] Detected InBody data in message, saving to session {session_id}")
+            set_inbody_data(session_id, inbody_data)
+            # Trả về xác nhận đã lưu InBody
+            return ChatResponse(
+                response="Mình đã lưu thông tin InBody của bạn. Bây giờ bạn có thể hỏi về lịch tập hoặc bài tập phù hợp!",
+                session_id=session_id
+            )
+        
         # Load system prompt
         system_prompt = load_system_prompt()
         
@@ -108,7 +122,9 @@ async def chat(chat_message: ChatMessage):
             is_exercise_query = is_exercise_related_query(message)
             if is_exercise_query:
                 try:
-                    exercise_response_text = generate_exercise_response(message)
+                    # Lấy InBody data từ session nếu có
+                    inbody_data = get_inbody_data(session_id)
+                    exercise_response_text = generate_exercise_response(message, inbody_data=inbody_data, session_id=session_id)
                     if exercise_response_text:
                         record_conversation_turn(session_id, message, exercise_response_text)
                         return ChatResponse(

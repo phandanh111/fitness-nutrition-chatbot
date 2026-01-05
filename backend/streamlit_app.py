@@ -20,12 +20,14 @@ logger = logging.getLogger(__name__)
 # Add backend directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from services.exercise_service import generate_exercise_response, is_exercise_related_query
+from services.exercise_service import generate_exercise_response, is_exercise_related_query, parse_inbody_from_message
 from services.llm_service import get_ai_response
 from services.conversation_service import (
     get_history as get_conversation_history,
     record_turn as record_conversation_turn,
     clear_session as clear_conversation_session,
+    set_inbody_data,
+    get_inbody_data,
 )
 
 # Load system prompt
@@ -160,6 +162,16 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                 response_text = None
                 response_type = None
                 
+                # Parse InBody data từ message nếu có
+                inbody_data = parse_inbody_from_message(message)
+                if inbody_data:
+                    logger.info(f"[INBODY] Detected InBody data in message, saving to session {session_id[:20]}...")
+                    set_inbody_data(session_id, inbody_data)
+                    response_text = "Mình đã lưu thông tin InBody của bạn. Bây giờ bạn có thể hỏi về lịch tập hoặc bài tập phù hợp!"
+                    response_type = "INBODY_SAVED"
+                    record_conversation_turn(session_id, message, response_text)
+                    logger.info(f"[RESPONSE] Type: INBODY_SAVED")
+                
                 # Check if query is about exercises
                 if not response_text:
                     try:
@@ -167,7 +179,9 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                         if is_exercise_query:
                             logger.info(f"[QUERY_TYPE] Detected: EXERCISE | Session: {session_id[:20]}...")
                             try:
-                                exercise_response_text = generate_exercise_response(message)
+                                # Lấy InBody data từ session nếu có
+                                inbody_data = get_inbody_data(session_id)
+                                exercise_response_text = generate_exercise_response(message, inbody_data=inbody_data, session_id=session_id)
                                 if exercise_response_text:
                                     response_text = exercise_response_text
                                     response_type = "EXERCISE"

@@ -1,7 +1,8 @@
 import os
+import json
 from collections import deque
 from threading import Lock
-from typing import Deque, Dict, List, Literal, Optional
+from typing import Deque, Dict, List, Literal, Optional, Any
 
 Role = Literal["user", "assistant"]
 
@@ -9,6 +10,7 @@ DEFAULT_MAX_MESSAGES = 12
 MAX_MESSAGES = int(os.getenv("CHAT_HISTORY_MAX_MESSAGES", DEFAULT_MAX_MESSAGES))
 
 _history: Dict[str, Deque[Dict[str, str]]] = {}
+_inbody_data: Dict[str, Dict[str, Any]] = {}  # Store InBody data per session
 _lock = Lock()
 
 
@@ -58,4 +60,23 @@ def clear_all_sessions() -> None:
     """Remove all stored sessions."""
     with _lock:
         _history.clear()
+        _inbody_data.clear()
+
+
+def set_inbody_data(session_id: str, inbody_data: Dict[str, Any]) -> None:
+    """Lưu InBody data cho session."""
+    with _lock:
+        _inbody_data[session_id] = inbody_data
+
+
+def get_inbody_data(session_id: str) -> Optional[Dict[str, Any]]:
+    """Lấy InBody data cho session."""
+    with _lock:
+        return _inbody_data.get(session_id)
+
+
+def clear_inbody_data(session_id: str) -> None:
+    """Xóa InBody data cho session."""
+    with _lock:
+        _inbody_data.pop(session_id, None)
 
