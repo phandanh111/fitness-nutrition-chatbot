@@ -141,9 +141,9 @@ def parse_inbody_from_message(message: str) -> Optional[Dict[str, Any]]:
     except (json.JSONDecodeError, AttributeError):
         pass
     
-    # Thử parse từ text format: "Tôi nặng 55kg, cao 160cm, BMI 21.5"
+    
     try:
-        # Extract các số liệu từ text
+        
         weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:kg|kilogram)', message, re.IGNORECASE)
         height_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:cm|centimeter)', message, re.IGNORECASE)
         bmi_match = re.search(r'BMI[:\s]*(\d+(?:\.\d+)?)', message, re.IGNORECASE)
@@ -175,7 +175,7 @@ def parse_inbody_from_message(message: str) -> Optional[Dict[str, Any]]:
             if fat_match:
                 fat_pct = float(fat_match.group(1))
                 inbody_data["obesity"]["pbf"] = str(fat_pct)
-                # Estimate fat mass if we have weight
+                
                 if weight_match:
                     weight = float(weight_match.group(1))
                     fat_mass = (fat_pct / 100) * weight
@@ -192,7 +192,7 @@ def parse_inbody_from_message(message: str) -> Optional[Dict[str, Any]]:
                 elif gender in ["nữ", "female"]:
                     inbody_data["inbody_info"]["gender"] = "Female"
             
-            # Chỉ trả về nếu có ít nhất weight hoặc height
+            
             if weight_match or height_match:
                 print(f"[ExerciseService] Parsed InBody data from text in message")
                 return inbody_data
@@ -232,240 +232,15 @@ def is_exercise_related_query(message: str) -> bool:
         return False
 
 
-def _enhance_query_with_inbody(message: str, inbody_data: Optional[Dict[str, Any]] = None) -> str:
-    """
-    Enhance query với thông tin InBody nếu có (Option 1 - nhẹ).
-    
-    Args:
-        message: Câu hỏi gốc
-        inbody_data: Dữ liệu InBody (optional)
-        
-    Returns:
-        Enhanced query string
-    """
-    if not inbody_data:
-        return message
-    
-    try:
-        # Lazy import để tránh circular import
-        from services.inbody_service import analyze_health_status
-        
-        # Phân tích InBody để lấy thông tin cơ bản
-        analysis = analyze_health_status(inbody_data)
-        bmi = analysis.get("bmi")
-        goals = analysis.get("goals", [])
-        
-        # Thêm context nhẹ vào query
-        context_parts = []
-        
-        if bmi:
-            if bmi < 18.5:
-                context_parts.append("cho người gầy cần tăng cân tăng cơ")
-            elif bmi >= 25:
-                context_parts.append("cho người thừa cân cần giảm mỡ")
-        
-        if goals:
-            # Lấy mục tiêu chính
-            main_goal = goals[0] if goals else ""
-            if "tăng cân" in main_goal.lower() or "tăng cơ" in main_goal.lower():
-                context_parts.append("ưu tiên bài tập tăng cơ")
-            elif "giảm mỡ" in main_goal.lower() or "giảm cân" in main_goal.lower():
-                context_parts.append("ưu tiên bài tập đốt mỡ cardio")
-        
-        if context_parts:
-            enhanced = f"{message}. {', '.join(context_parts)}"
-            print(f"[ExerciseService] Enhanced query: {enhanced}")
-            return enhanced
-        
-    except Exception as e:
-        print(f"[ExerciseService] Error enhancing query with InBody: {e}")
-    
-    return message
-
-
-def _filter_exercises_by_inbody(
-    semantic_results: List[Dict], 
-    inbody_data: Optional[Dict[str, Any]] = None
-) -> List[Dict]:
-    """
-    Filter và re-rank exercises dựa trên InBody data (Option 2).
-    
-    Args:
-        semantic_results: Kết quả semantic search
-        inbody_data: Dữ liệu InBody (optional)
-        
-    Returns:
-        Filtered và re-ranked results
-    """
-    if not inbody_data or not semantic_results:
-        return semantic_results
-    
-    try:
-        # Lazy import để tránh circular import
-        from services.inbody_service import analyze_health_status
-        
-        # Phân tích InBody
-        analysis = analyze_health_status(inbody_data)
-        bmi = analysis.get("bmi")
-        pbf = analysis.get("body_fat_percentage")
-        goals = analysis.get("goals", [])
-        recommended_difficulty = analysis.get("recommended_difficulty", "BASIC")
-        focus_areas = analysis.get("focus_areas", [])
-        
-        # Parse exercises từ raw data
-        exercises_with_scores = []
-        for result in semantic_results:
-            raw_data = result.get("raw")
-            if not raw_data:
-                continue
-            
-            # Parse raw JSON nếu cần
-            try:
-                if isinstance(raw_data, str):
-                    import json
-                    exercise = json.loads(raw_data)
-                else:
-                    exercise = raw_data
-            except:
-                exercise = raw_data if isinstance(raw_data, dict) else {}
-            
-            score = result.get("score", 1.0)
-            exercises_with_scores.append({
-                "exercise": exercise,
-                "original_score": score,
-                "adjusted_score": score,  # Sẽ được điều chỉnh
-                "result": result
-            })
-        
-        # Filter và re-rank
-        filtered = []
-        
-        for item in exercises_with_scores:
-            exercise = item["exercise"]
-            adjusted_score = item["original_score"]
-            
-            # 1. Filter theo độ khó
-            difficulty = exercise.get("difficulty", "").strip()
-            difficulty_match = False
-            
-            # Extract difficulty level
-            if "(" in difficulty:
-                match = re.search(r'\(([^)]+)\)', difficulty)
-                if match:
-                    difficulty_clean = match.group(1).strip()
-                else:
-                    difficulty_clean = difficulty
-            else:
-                difficulty_clean = difficulty
-            
-            # Kiểm tra độ khó phù hợp
-            if recommended_difficulty == "BASIC" or recommended_difficulty == "BEGINNER":
-                if difficulty_clean in ["BASIC", "BEGINNER"]:
-                    difficulty_match = True
-                    adjusted_score *= 0.9  # Boost score
-                elif difficulty_clean in ["MODERATE", "ADVANCED"]:
-                    adjusted_score *= 1.1  # Penalize score
-            elif recommended_difficulty == "MODERATE":
-                if difficulty_clean in ["BASIC", "BEGINNER", "MODERATE"]:
-                    difficulty_match = True
-                    if difficulty_clean == "MODERATE":
-                        adjusted_score *= 0.9  # Boost
-                elif difficulty_clean == "ADVANCED":
-                    adjusted_score *= 1.1  # Penalize
-            elif recommended_difficulty == "ADVANCED":
-                difficulty_match = True  # Advanced có thể làm tất cả
-                if difficulty_clean == "ADVANCED":
-                    adjusted_score *= 0.9  # Boost
-            
-            # 2. Filter theo goals
-            name = (exercise.get("nameVi", "") + " " + exercise.get("nameEn", "")).lower()
-            muscle_group = exercise.get("muscleGroup", "").lower()
-            
-            # Nếu mục tiêu là giảm mỡ/giảm cân
-            if any("giảm" in goal.lower() or "mỡ" in goal.lower() or "cân" in goal.lower() for goal in goals):
-                # Ưu tiên bài tập cardio, full body, high calories
-                if any(keyword in name for keyword in ["cardio", "hiit", "burn", "circuit"]):
-                    adjusted_score *= 0.85  # Boost significantly
-                if "full body" in muscle_group or "toàn thân" in muscle_group:
-                    adjusted_score *= 0.9  # Boost
-                calories = exercise.get("calories", "")
-                try:
-                    cal_value = float(str(calories).replace(" kcal", "").strip())
-                    if cal_value > 200:
-                        adjusted_score *= 0.9  # Boost high calorie exercises
-                except:
-                    pass
-            
-            # Nếu mục tiêu là tăng cân/tăng cơ
-            elif any("tăng" in goal.lower() or "cơ" in goal.lower() for goal in goals):
-                # Ưu tiên bài tập strength, builder, power
-                if any(keyword in name for keyword in ["builder", "build", "power", "strong", "gains"]):
-                    adjusted_score *= 0.85  # Boost significantly
-                # Tránh bài tập cardio quá nhiều
-                if "cardio" in name and "light" not in name:
-                    adjusted_score *= 1.1  # Penalize
-            
-            # 3. Filter theo focus areas
-            if focus_areas:
-                area_keywords = {
-                    "Core": ["core", "abs", "bụng"],
-                    "Cardio": ["cardio", "hiit", "burn"],
-                    "Full Body": ["full body", "toàn thân"],
-                }
-                
-                matched = False
-                for area in focus_areas:
-                    if area in area_keywords:
-                        keywords = area_keywords[area]
-                        if any(kw in name or kw in muscle_group for kw in keywords):
-                            adjusted_score *= 0.9  # Boost
-                            matched = True
-                            break
-            
-            # 4. Filter theo BMI cụ thể
-            if bmi:
-                if bmi < 18.5:  # Gầy
-                    # Tránh bài tập cardio nặng, ưu tiên strength
-                    if "cardio" in name and "light" not in name:
-                        adjusted_score *= 1.15  # Penalize
-                    if any(kw in name for kw in ["builder", "build", "power"]):
-                        adjusted_score *= 0.85  # Boost
-                elif bmi >= 25:  # Thừa cân
-                    # Ưu tiên cardio, tránh bài tập quá nặng
-                    if "cardio" in name or "hiit" in name:
-                        adjusted_score *= 0.85  # Boost
-                    if "advanced" in difficulty.lower():
-                        adjusted_score *= 1.1  # Penalize nếu quá khó
-            
-            item["adjusted_score"] = adjusted_score
-            filtered.append(item)
-        
-        # Sort lại theo adjusted_score (thấp hơn = tốt hơn)
-        filtered.sort(key=lambda x: x["adjusted_score"])
-        
-        # Trả về results với score đã điều chỉnh
-        return [item["result"] for item in filtered]
-        
-    except Exception as e:
-        print(f"[ExerciseService] Error filtering exercises by InBody: {e}")
-        import traceback
-        traceback.print_exc()
-        return semantic_results  # Fallback về kết quả gốc
-
-
 def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None) -> str:
     """
     Tạo câu trả lời cho câu hỏi về bài tập.
     
     Args:
         message: Câu hỏi về bài tập
-        inbody_data: Dữ liệu InBody để cá nhân hóa (optional, nếu None sẽ lấy từ session)
-        session_id: Session ID để lấy InBody data từ session (optional)
+        inbody_data: Dữ liệu InBody (không sử dụng, giữ lại để tương thích)
+        session_id: Session ID (không sử dụng, giữ lại để tương thích)
     """
-    # Nếu không có inbody_data, thử lấy từ session
-    if not inbody_data and session_id:
-        inbody_data = get_inbody_data_if_available(session_id)
-    # Kiểm tra câu hỏi về số lượng
     print(f"[ExerciseService] Generating exercise response for message: {message}")
     if is_count_query(message):
         all_exercises = get_all_exercises()
@@ -480,24 +255,14 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
             extra_guidance="Trả lời rõ ràng tổng số bài tập và phân loại theo độ khó nếu có. KHÔNG liệt kê từng bài tập, chỉ trả lời về số lượng.",
         )
     
-    # Enhance query với InBody nếu có (Option 1 - nhẹ)
-    enhanced_query = _enhance_query_with_inbody(message, inbody_data)
-    
-    # Semantic search với top_k lớn hơn để có nhiều options
-    search_top_k = 20 if inbody_data else 10
+    # Semantic search đơn giản - không enhance query, không filter/re-rank
     semantic_results: List[Dict] = []
     try:
-        semantic_results = semantic_search(enhanced_query, top_k=search_top_k)
+        semantic_results = semantic_search(message, top_k=10)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
         import traceback
         traceback.print_exc()
-
-    # Filter và re-rank dựa trên InBody nếu có (Option 2)
-    if inbody_data and semantic_results:
-        print(f"[ExerciseService] Filtering {len(semantic_results)} results with InBody data")
-        semantic_results = _filter_exercises_by_inbody(semantic_results, inbody_data)
-        print(f"[ExerciseService] After filtering: {len(semantic_results)} results")
 
     # Chỉ sử dụng kết quả nếu score tốt (score < 0.85 nghĩa là tương đồng tốt)
     SEMANTIC_SCORE_THRESHOLD = 0.85
@@ -509,14 +274,13 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
         ]
         
         if good_results:
-            # Lấy top exercises sau khi filter
+            # Lấy top exercises
             top_results = good_results[:MAX_CONTEXT_EXERCISES]
             semantic_exercises = [item.get("raw") for item in top_results if item.get("raw")]
             if semantic_exercises:
                 contexts = build_context_from_exercises(semantic_exercises)
                 return generate_answer_from_context(message, contexts)
 
-    # Nếu không tìm thấy kết quả semantic search phù hợp (score quá cao = không tương đồng)
-    # Trả về thông báo chung - không dùng keyword check, hoàn toàn dựa vào vector similarity
+    # Nếu không tìm thấy kết quả semantic search phù hợp
     return "Mình chưa tìm thấy thông tin về bài tập bạn đang hỏi. Bạn có thể mô tả cụ thể hơn về bài tập hoặc nhóm cơ bạn muốn tập không?"
 

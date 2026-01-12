@@ -104,23 +104,14 @@ with st.sidebar:
     
     # AI Status
     st.subheader("🤖 Trạng thái AI")
-    AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")
-    if AI_PROVIDER.lower() == "ollama":
-        from utils.ollama_client import ollama_client
-        status = ollama_client.test_connection()
-        if status["available"]:
-            st.success("✅ Ollama đang hoạt động")
-            if status["models"]:
-                st.caption(f"Models: {', '.join(status['models'])}")
-        else:
-            st.error("❌ Ollama không khả dụng")
-            st.caption(f"Lỗi: {status.get('error', 'Unknown')}")
-    elif AI_PROVIDER.lower() == "deepseek":
-        DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-        if DEEPSEEK_API_KEY:
-            st.success("✅ DeepSeek API đã cấu hình")
-        else:
-            st.error("❌ Thiếu DEEPSEEK_API_KEY")
+    from utils.ollama_client import ollama_client
+    status = ollama_client.test_connection()
+    if status["available"]:
+        st.success(f"✅ Ollama đang hoạt động")
+        st.caption(f"Model: {ollama_client.model}")
+    else:
+        st.error("❌ Ollama không khả dụng")
+        st.caption(f"Lỗi: {status.get('error', 'Unknown')}")
 
 # Chat container
 chat_container = st.container()
@@ -162,37 +153,35 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                 response_text = None
                 response_type = None
                 
-                # Parse InBody data từ message nếu có
-                inbody_data = parse_inbody_from_message(message)
-                if inbody_data:
+                # Parse InBody data từ message nếu có và lưu vào session
+                parsed_inbody = parse_inbody_from_message(message)
+                if parsed_inbody:
                     logger.info(f"[INBODY] Detected InBody data in message, saving to session {session_id[:20]}...")
-                    set_inbody_data(session_id, inbody_data)
-                    response_text = "Mình đã lưu thông tin InBody của bạn. Bây giờ bạn có thể hỏi về lịch tập hoặc bài tập phù hợp!"
-                    response_type = "INBODY_SAVED"
-                    record_conversation_turn(session_id, message, response_text)
-                    logger.info(f"[RESPONSE] Type: INBODY_SAVED")
+                    set_inbody_data(session_id, parsed_inbody)
                 
                 # Check if query is about exercises
-                if not response_text:
-                    try:
-                        is_exercise_query = is_exercise_related_query(message)
-                        if is_exercise_query:
-                            logger.info(f"[QUERY_TYPE] Detected: EXERCISE | Session: {session_id[:20]}...")
-                            try:
-                                # Lấy InBody data từ session nếu có
-                                inbody_data = get_inbody_data(session_id)
-                                exercise_response_text = generate_exercise_response(message, inbody_data=inbody_data, session_id=session_id)
-                                if exercise_response_text:
-                                    response_text = exercise_response_text
-                                    response_type = "EXERCISE"
-                                    record_conversation_turn(session_id, message, response_text)
-                                    logger.info(f"[RESPONSE] Type: EXERCISE | Length: {len(response_text)} chars")
-                            except Exception as e:
-                                logger.error(f"[ERROR] Exercise response generation failed: {e}", exc_info=True)
-                                st.error(f"Lỗi khi xử lý câu hỏi về bài tập: {e}")
-                    except Exception as e:
-                        logger.debug(f"[QUERY_CHECK] Exercise check failed: {e}")
-                        pass
+                try:
+                    is_exercise_query = is_exercise_related_query(message)
+                    if is_exercise_query:
+                        logger.info(f"[QUERY_TYPE] Detected: EXERCISE | Session: {session_id[:20]}...")
+                        try:
+                            # Lấy InBody data từ session (có thể là vừa parse hoặc đã lưu trước đó)
+                            inbody_data = get_inbody_data(session_id)
+                            # Nếu vừa parse được InBody, ưu tiên dùng data vừa parse
+                            if parsed_inbody:
+                                inbody_data = parsed_inbody
+                            exercise_response_text = generate_exercise_response(message, inbody_data=inbody_data, session_id=session_id)
+                            if exercise_response_text:
+                                response_text = exercise_response_text
+                                response_type = "EXERCISE"
+                                record_conversation_turn(session_id, message, response_text)
+                                logger.info(f"[RESPONSE] Type: EXERCISE | Length: {len(response_text)} chars")
+                        except Exception as e:
+                            logger.error(f"[ERROR] Exercise response generation failed: {e}", exc_info=True)
+                            st.error(f"Lỗi khi xử lý câu hỏi về bài tập: {e}")
+                except Exception as e:
+                    logger.debug(f"[QUERY_CHECK] Exercise check failed: {e}")
+                    pass
                 
                 # If no specific response, use general AI
                 if not response_text:
