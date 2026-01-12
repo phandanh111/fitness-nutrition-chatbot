@@ -87,10 +87,10 @@ fi
 
 if [ "$NEED_FORCE_REBUILD" = "true" ]; then
     echo "   → Rebuild toàn bộ RAG index..."
-    $VENV_PYTHON scripts/build_club_index.py --force
+    $VENV_PYTHON scripts/build_exercise_index.py --force
 else
     echo "   → Cập nhật RAG index hiện có..."
-    $VENV_PYTHON scripts/build_club_index.py
+    $VENV_PYTHON scripts/build_exercise_index.py
 fi
 
 if [ $? -ne 0 ]; then

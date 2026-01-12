@@ -20,8 +20,8 @@ load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="The New Gym Club Information Chatbot API",
-    description="API cho chatbot cung cấp thông tin chi nhánh The New Gym sử dụng RAG",
+    title="The New Gym Exercise Chatbot API",
+    description="API cho chatbot tư vấn bài tập gym sử dụng RAG",
     version="1.0.0"
 )
 
@@ -52,7 +52,7 @@ def load_system_prompt():
         with open("prompt_system.txt", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về thông tin chi nhánh và các câu hỏi khác về The New Gym."
+        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về bài tập gym và các câu hỏi khác về The New Gym."
 
 # Pydantic models
 class ChatMessage(BaseModel):
@@ -66,7 +66,7 @@ class ChatResponse(BaseModel):
 # API Routes
 @app.get("/")
 async def root():
-    return {"message": "The New Gym Club Information Chatbot API", "status": "running"}
+    return {"message": "The New Gym Exercise Chatbot API", "status": "running"}
 
 @app.get("/ai-status")
 async def get_ai_status():
@@ -119,7 +119,7 @@ async def chat(chat_message: ChatMessage):
                     print(f"[Chat] Error generating exercise response: {e}")
                     import traceback
                     traceback.print_exc()
-                    # Continue to try clubs or general LLM
+                    # Continue to general LLM
         except Exception as e:
             print(f"[Chat] Error checking exercise query: {e}")
             import traceback
@@ -181,85 +181,6 @@ async def chat(chat_message: ChatMessage):
         except:
             # Nếu không thể tạo response, mới raise exception
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.get("/clubs")
-async def get_clubs(refresh: bool = False):
-    """Lấy danh sách tất cả clubs"""
-    try:
-        clubs = clubs_client.fetch_clubs(use_cache=not refresh)
-        source = clubs_client.get_last_source()
-        return {
-            "code": 1010,
-            "message": "GET_CLUBS_REFRESH" if refresh else "GET_CLUBS",
-            "data": clubs,
-            "meta": {
-                "count": len(clubs),
-                "source": source,
-                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
-                "refresh": refresh
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/clubs/search")
-async def search_clubs(q: str, refresh: bool = False):
-    """Tìm kiếm clubs theo từ khóa"""
-    try:
-        if not q:
-            raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
-        results = clubs_client.search_clubs(q, use_cache=not refresh)
-        source = clubs_client.get_last_source()
-        return {
-            "code": 1010,
-            "message": "SEARCH_CLUBS_REFRESH" if refresh else "SEARCH_CLUBS",
-            "data": results,
-            "meta": {
-                "count": len(results),
-                "source": source,
-                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
-                "refresh": refresh,
-                "query": q
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/clubs/active")
-async def get_active_clubs(refresh: bool = False):
-    """Lấy danh sách clubs đang hoạt động"""
-    try:
-        clubs = clubs_client.get_active_clubs(use_cache=not refresh)
-        source = clubs_client.get_last_source()
-        return {
-            "code": 1010,
-            "message": "GET_ACTIVE_CLUBS_REFRESH" if refresh else "GET_ACTIVE_CLUBS",
-            "data": clubs,
-            "meta": {
-                "count": len(clubs),
-                "source": source,
-                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
-                "refresh": refresh
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/clubs/cache")
-async def clear_clubs_cache():
-    """Xóa cache clubs để lần gọi tiếp theo lấy dữ liệu mới"""
-    try:
-        clubs_client.clear_cache()
-        return {
-            "message": "Clubs cache cleared",
-            "meta": {
-                "cache_last_updated": clubs_client.get_cache_timestamp_iso(),
-                "source": clubs_client.get_last_source()
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.delete("/sessions/{session_id}")
 async def clear_session(session_id: str):

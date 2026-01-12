@@ -1,8 +1,7 @@
 """
 Script để xem vectors đã lưu trong ChromaDB bằng ChromaDB client.
     
-Mặc định hiển thị collection `clubs`. Có thể xem thêm `exercises`, `terms`,
-hoặc `inbody` qua tham số `--topic`.
+Mặc định hiển thị collection `exercises`.
 """
 
 import sys
@@ -23,10 +22,7 @@ from rag.base_rag import CHROMA_DIR, VietnameseEmbeddingFunction, _get_global_cl
 
 # Map topic -> collection name
 TOPIC_CONFIG = {
-    "clubs": "club_documents",
     "exercises": "exercise_documents",
-    "terms": "terms_documents",
-    "inbody": "inbody_documents",
 }
 
 
@@ -187,11 +183,8 @@ def view_vectors(topic: str):
     print("\n" + "=" * 80)
     print("💡 HƯỚNG DẪN:")
     print("-" * 80)
-    print("Để xem tất cả vectors, chạy (mặc định clubs):")
-    print("  python backend/scripts/view_vectors.py --topic clubs")
+    print("Để xem tất cả vectors, chạy:")
     print("  python backend/scripts/view_vectors.py --topic exercises")
-    print("  python backend/scripts/view_vectors.py --topic terms")
-    print("  python backend/scripts/view_vectors.py --topic inbody")
     print()
     print("Để test query vectors, chạy:")
     print("  python backend/scripts/test_embeddings_simple.py")
@@ -205,8 +198,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--topic",
         choices=list(TOPIC_CONFIG.keys()),
-        default="clubs",
-        help="Topic muốn xem (clubs/exercises/terms). Mặc định: clubs",
+        default="exercises",
+        help="Topic muốn xem. Mặc định: exercises",
     )
     args = parser.parse_args()
     view_vectors(topic=args.topic)
