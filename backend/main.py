@@ -5,16 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from utils.ollama_client import ollama_client
-from services.club_service import generate_club_response, is_club_related_query
 from services.exercise_service import generate_exercise_response, is_exercise_related_query
-from services.terms_service import generate_terms_response, is_terms_related_query
-from services.price_service import generate_price_response, is_price_related_query
-from utils.clubs_client import clubs_client
 from services.llm_service import get_ai_response
 from services.conversation_service import (
     get_history as get_conversation_history,
     record_turn as record_conversation_turn,
     clear_session as clear_conversation_session,
+    set_inbody_data,
+    get_inbody_data,
 )
 
 # Load environment variables
@@ -46,11 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# AI Provider configuration
-AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+# Chỉ sử dụng Ollama với deepseek-r1:14b
 
 # Load system prompt
 def load_system_prompt():
@@ -76,25 +70,15 @@ async def root():
 
 @app.get("/ai-status")
 async def get_ai_status():
-    """Kiểm tra trạng thái AI provider"""
-    provider = (AI_PROVIDER or "ollama").lower()
-    if provider == "ollama":
-        status = ollama_client.test_connection()
-        return {
-            "provider": "ollama",
-            "available": status["available"],
-            "models": status["models"],
-            "error": status["error"]
-        }
-    elif provider == "deepseek":
-        return {
-            "provider": "deepseek",
-            "available": bool(DEEPSEEK_API_KEY),
-            "models": [DEEPSEEK_MODEL] if DEEPSEEK_MODEL else [],
-            "error": None if DEEPSEEK_API_KEY else "Missing DEEPSEEK_API_KEY"
-        }
-    else:
-        return {"provider": provider, "available": False, "error": "Unknown AI provider"}
+    """Kiểm tra trạng thái Ollama"""
+    status = ollama_client.test_connection()
+    return {
+        "provider": "ollama",
+        "model": ollama_client.model,
+        "available": status["available"],
+        "models": status["models"],
+        "error": status["error"]
+    }
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(chat_message: ChatMessage):
@@ -104,38 +88,27 @@ async def chat(chat_message: ChatMessage):
         message = chat_message.message
         history = get_conversation_history(session_id)
         
+        # Parse InBody data từ message nếu có và lưu vào session
+        from services.exercise_service import parse_inbody_from_message
+        parsed_inbody = parse_inbody_from_message(message)
+        if parsed_inbody:
+            print(f"[Chat] Detected InBody data in message, saving to session {session_id}")
+            set_inbody_data(session_id, parsed_inbody)
+        
         # Load system prompt
         system_prompt = load_system_prompt()
-        
-        # Check if query is about terms (điều khoản điều kiện)
-        try:
-            is_terms_query = is_terms_related_query(message)
-            if is_terms_query:
-                try:
-                    terms_response_text = generate_terms_response(message)
-                    if terms_response_text:
-                        record_conversation_turn(session_id, message, terms_response_text)
-                        return ChatResponse(
-                            response=terms_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating terms response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to try other topics or general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking terms query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try other topics or general LLM
         
         # Check if query is about exercises
         try:
             is_exercise_query = is_exercise_related_query(message)
             if is_exercise_query:
                 try:
-                    exercise_response_text = generate_exercise_response(message)
+                    # Lấy InBody data từ session (có thể là vừa parse hoặc đã lưu trước đó)
+                    inbody_data = get_inbody_data(session_id)
+                    # Nếu vừa parse được InBody, ưu tiên dùng data vừa parse
+                    if parsed_inbody:
+                        inbody_data = parsed_inbody
+                    exercise_response_text = generate_exercise_response(message, inbody_data=inbody_data, session_id=session_id)
                     if exercise_response_text:
                         record_conversation_turn(session_id, message, exercise_response_text)
                         return ChatResponse(
@@ -149,52 +122,6 @@ async def chat(chat_message: ChatMessage):
                     # Continue to try clubs or general LLM
         except Exception as e:
             print(f"[Chat] Error checking exercise query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try clubs or general LLM
-        
-        # Check if query is about clubs
-        try:
-            is_club_query = is_club_related_query(message)
-            if is_club_query:
-                try:
-                    club_response_text = generate_club_response(message)
-                    if club_response_text:
-                        record_conversation_turn(session_id, message, club_response_text)
-                        return ChatResponse(
-                            response=club_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating club response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to try prices or general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking club query: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue to try prices or general LLM
-        
-        # Check if query is about prices
-        try:
-            is_price_query = is_price_related_query(message)
-            if is_price_query:
-                try:
-                    price_response_text = generate_price_response(message)
-                    if price_response_text:
-                        record_conversation_turn(session_id, message, price_response_text)
-                        return ChatResponse(
-                            response=price_response_text,
-                            session_id=session_id
-                        )
-                except Exception as e:
-                    print(f"[Chat] Error generating price response: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Continue to general LLM
-        except Exception as e:
-            print(f"[Chat] Error checking price query: {e}")
             import traceback
             traceback.print_exc()
             # Continue to general LLM

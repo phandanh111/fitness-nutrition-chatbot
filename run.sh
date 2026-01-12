@@ -16,10 +16,10 @@ if ! command -v ollama &> /dev/null; then
     exit 1
 fi
 
-# Kiểm tra model Llama 3
-if ! ollama list | grep -q "llama3:8b"; then
-    echo "📥 Tải model Llama 3:8b..."
-    ollama pull llama3:8b
+# Kiểm tra model DeepSeek R1
+if ! ollama list | grep -q "deepseek-r1:14b"; then
+    echo "📥 Tải model DeepSeek R1:14b..."
+    ollama pull deepseek-r1:14b
     if [ $? -ne 0 ]; then
         echo "❌ Lỗi khi tải model. Vui lòng kiểm tra kết nối internet."
         exit 1

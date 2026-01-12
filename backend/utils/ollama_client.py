@@ -1,16 +1,23 @@
 """
-Ollama client để giao tiếp với Llama-3-8B-Instruct
+Ollama client để giao tiếp với Ollama models
 """
 
+import os
 import requests
 import json
 from typing import List, Dict, Optional
 
 class OllamaClient:
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama3:8b"):
-        self.base_url = base_url
+    def __init__(self, base_url: str = None, model: str = None):
+        # Đọc từ environment variables nếu không được truyền vào
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.model = model or os.getenv("OLLAMA_MODEL", "deepseek-r1:14b")
+        self.api_url = f"{self.base_url}/api/chat"
+    
+    def set_model(self, model: str) -> None:
+        """Cập nhật model được sử dụng."""
         self.model = model
-        self.api_url = f"{base_url}/api/chat"
+        print(f"[OllamaClient] Model changed to: {model}")
     
     def is_available(self) -> bool:
         """
@@ -55,7 +62,7 @@ class OllamaClient:
                 "options": {
                     "temperature": 0.7,
                     "top_p": 0.9,
-                    "max_tokens": 1000
+                    "max_tokens": int(os.getenv("OLLAMA_MAX_TOKENS", "2000"))  # Tăng max_tokens cho model lớn
                 }
             }
             
@@ -66,11 +73,12 @@ class OllamaClient:
                     "content": system_prompt
                 })
             
-            # Gửi request
+            # Gửi request với timeout có thể config từ env (mặc định 120s cho model lớn)
+            timeout_seconds = int(os.getenv("OLLAMA_TIMEOUT", "120"))
             response = requests.post(
                 self.api_url,
                 json=payload,
-                timeout=30
+                timeout=timeout_seconds
             )
             
             if response.status_code == 200:

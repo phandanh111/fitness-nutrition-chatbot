@@ -38,8 +38,9 @@ env.bak/
 venv.bak/
 .venv/
 
-# Generated data artifacts
-backend/data/
+# Generated data artifacts - ignore RAG cache directories
+backend/data/rag/chroma/
+backend/data/rag/hf_cache/
 
 # IDE
 .vscode/

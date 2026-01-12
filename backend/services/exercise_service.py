@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from rag.exercise_rag import semantic_search, parse_exercises_from_markdown
 from services.llm_service import get_ai_response
 from constants.rag_prompts import get_rag_system_prompt
+from services.conversation_service import get_inbody_data, set_inbody_data
 
-MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "4"))
+MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
 
 COUNT_QUERY_PATTERNS = [
     r"bao nhiêu",
@@ -21,6 +22,23 @@ COUNT_QUERY_PATTERNS = [
     r"mấy bài tập",
     r"có bao nhiêu",
 ]
+
+# Guidance lines chung cho tất cả responses
+BASE_GUIDANCE_LINES = [
+    "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
+    "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
+    "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
+    "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
+
+]
+
+
+def is_workout_plan_query(message: str) -> bool:
+    """Kiểm tra xem query có phải về lộ trình/chương trình tập không."""
+    return any(keyword in message.lower() for keyword in [
+        "lộ trình", "chương trình", "schedule", "kế hoạch", "plan", 
+        "tuần", "ngày", "thứ", "1 tuần", "một tuần", "7 ngày"
+    ])
 
 
 def build_context_from_exercises(exercises: List[Dict]) -> List[str]:
@@ -92,28 +110,130 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         return "Xin lỗi, mình chưa tìm thấy thông tin về bài tập này trong dữ liệu hiện có."
 
     context_text = "\n\n".join(f"[Đoạn {idx}] {block}" for idx, block in enumerate(context_blocks, 1))
-    guidance_lines = [
-        "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
-        "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
-        "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
-        "TUYỆT ĐỐI KHÔNG được tự động gợi ý các bài tập hoặc chi nhánh nếu câu hỏi không liên quan đến thông tin trong ngữ cảnh.",
-        "Nếu câu hỏi về giờ mở cửa, giá cả, dịch vụ, hoặc thông tin khác không có trong ngữ cảnh, bạn PHẢI thừa nhận rằng mình không có thông tin và đề nghị liên hệ trực tiếp với The New Gym.",
-        "- Liệt kê tối đa 3 bài tập phù hợp nhất, mỗi bài tập gồm tên, nhóm cơ, mô tả, lợi ích, thiết bị - CHỈ khi thông tin này có trong ngữ cảnh VÀ liên quan trực tiếp đến câu hỏi.",
-        "- Giữ giọng điệu mềm mại, gần gũi, dùng đại từ 'mình'/'bạn', tránh nhắc lặp lại cùng một câu.",
-        "- Nếu người dùng hỏi về nhóm cơ cụ thể, hãy tập trung vào các bài tập cho nhóm cơ đó.",
-    ]
+    
+    # Sử dụng guidance lines chung
+    guidance_lines = BASE_GUIDANCE_LINES.copy()
+    
+    # Thêm guidance đặc biệt nếu có
     if extra_guidance:
-        guidance_lines.append(f"- {extra_guidance}")
+        guidance_lines.append(extra_guidance)
 
     prompt = (
         f"Ngữ cảnh:\n{context_text}\n\n"
         f"Hướng dẫn:\n" + "\n".join(guidance_lines) + "\n\n"
         f"Câu hỏi của khách: {question}\n\n"
-        f"LƯU Ý CUỐI CÙNG: Nếu câu hỏi về một bài tập hoặc nhóm cơ cụ thể nhưng trong ngữ cảnh không có thông tin, bạn PHẢI trả lời 'Mình chưa tìm thấy thông tin về [bài tập/nhóm cơ đó]' và KHÔNG được liệt kê các bài tập khác như thể chúng phù hợp. "
-        f"Nếu câu hỏi KHÔNG liên quan đến thông tin bài tập trong ngữ cảnh (ví dụ: giờ mở cửa, giá cả, dịch vụ), bạn PHẢI trả lời trực tiếp về câu hỏi đó và KHÔNG được tự động gợi ý các bài tập hoặc chi nhánh."
     )
     messages = [{"role": "user", "content": prompt}]
+    print(f"[ExerciseService] Messages: {messages}")
     return get_ai_response(messages, get_rag_system_prompt("exercises"))
+
+
+def parse_inbody_from_message(message: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse InBody data từ message (có thể là JSON hoặc text).
+    
+    Args:
+        message: Message từ user có thể chứa InBody data
+        
+    Returns:
+        InBody data dict hoặc None nếu không parse được
+    """
+    import json
+    import re
+    
+    # Thử parse JSON trước
+    try:
+        # Tìm JSON object trong message
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', message, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(0)
+            inbody_data = json.loads(json_str)
+            
+            # Kiểm tra xem có phải InBody data không
+            if isinstance(inbody_data, dict):
+                if "composition" in inbody_data or "inbody_info" in inbody_data or "muscle_fat" in inbody_data:
+                    print(f"[ExerciseService] Parsed InBody data from JSON in message")
+                    return inbody_data
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    
+    
+    try:
+        
+        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:kg|kilogram)', message, re.IGNORECASE)
+        height_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:cm|centimeter)', message, re.IGNORECASE)
+        bmi_match = re.search(r'BMI[:\s]*(\d+(?:\.\d+)?)', message, re.IGNORECASE)
+        fat_match = re.search(r'(?:tỷ\s*lệ\s*mỡ|body\s*fat|mỡ)[:\s]*(\d+(?:\.\d+)?)\s*%?', message, re.IGNORECASE)
+        age_match = re.search(r'(?:tuổi|age)[:\s]*(\d+)', message, re.IGNORECASE)
+        gender_match = re.search(r'(?:giới\s*tính|gender)[:\s]*(nam|nữ|male|female)', message, re.IGNORECASE)
+        
+        if weight_match or height_match or bmi_match:
+            inbody_data = {
+                "composition": {},
+                "inbody_info": {},
+                "muscle_fat": {},
+                "obesity": {}
+            }
+            
+            if weight_match:
+                weight = float(weight_match.group(1))
+                inbody_data["composition"]["weight"] = str(weight)
+                inbody_data["muscle_fat"]["weight"] = str(weight)
+            
+            if height_match:
+                height = float(height_match.group(1))
+                inbody_data["inbody_info"]["height"] = str(height)
+            
+            if bmi_match:
+                bmi = float(bmi_match.group(1))
+                inbody_data["obesity"]["bmi"] = str(bmi)
+            
+            if fat_match:
+                fat_pct = float(fat_match.group(1))
+                inbody_data["obesity"]["pbf"] = str(fat_pct)
+                
+                if weight_match:
+                    weight = float(weight_match.group(1))
+                    fat_mass = (fat_pct / 100) * weight
+                    inbody_data["muscle_fat"]["fat_mass"] = str(fat_mass)
+                    inbody_data["composition"]["fat"] = str(fat_mass)
+            
+            if age_match:
+                inbody_data["inbody_info"]["age"] = age_match.group(1)
+            
+            if gender_match:
+                gender = gender_match.group(1).lower()
+                if gender in ["nam", "male"]:
+                    inbody_data["inbody_info"]["gender"] = "Male"
+                elif gender in ["nữ", "female"]:
+                    inbody_data["inbody_info"]["gender"] = "Female"
+            
+            
+            if weight_match or height_match:
+                print(f"[ExerciseService] Parsed InBody data from text in message")
+                return inbody_data
+                
+    except Exception as e:
+        print(f"[ExerciseService] Error parsing InBody from text: {e}")
+    
+    return None
+
+
+def get_inbody_data_if_available(session_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Lấy InBody data từ session nếu có.
+    
+    Args:
+        session_id: Session ID để lấy InBody data
+        
+    Returns:
+        InBody data dict hoặc None nếu không có
+    """
+    if session_id:
+        inbody_data = get_inbody_data(session_id)
+        if inbody_data:
+            return inbody_data
+    return None
 
 
 def is_exercise_related_query(message: str) -> bool:
@@ -128,46 +248,81 @@ def is_exercise_related_query(message: str) -> bool:
         return False
 
 
-def generate_exercise_response(message: str) -> str:
-    """Tạo câu trả lời cho câu hỏi về bài tập."""
-    # Kiểm tra câu hỏi về số lượng
+def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None) -> str:
+    """
+    Tạo câu trả lời cho câu hỏi về bài tập.
+    
+    Args:
+        message: Câu hỏi về bài tập
+        inbody_data: Dữ liệu InBody (không sử dụng, giữ lại để tương thích)
+        session_id: Session ID (không sử dụng, giữ lại để tương thích)
+    """
+    print(f"[ExerciseService] Generating exercise response for message: {message}")
     if is_count_query(message):
         all_exercises = get_all_exercises()
         if not all_exercises:
             return "Xin lỗi, hiện chưa có dữ liệu về các bài tập trong hệ thống."
         
         total_context = build_total_counts_context(all_exercises)
+        print(f"[ExerciseService] Total context: {total_context}")
         return generate_answer_from_context(
             message,
             [total_context],
             extra_guidance="Trả lời rõ ràng tổng số bài tập và phân loại theo độ khó nếu có. KHÔNG liệt kê từng bài tập, chỉ trả lời về số lượng.",
         )
     
-    # Thử semantic search trước
+    # Kiểm tra xem có phải query về lộ trình/chương trình tập không
+    workout_plan = is_workout_plan_query(message)
+    
+    # Semantic search đơn giản
     semantic_results: List[Dict] = []
     try:
-        semantic_results = semantic_search(message, top_k=MAX_CONTEXT_EXERCISES)
+        # Nếu là query về lộ trình, tăng top_k để có nhiều bài tập đa dạng
+        search_top_k = 20 if workout_plan else 10
+        semantic_results = semantic_search(message, top_k=search_top_k)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
         import traceback
         traceback.print_exc()
 
-    # Chỉ sử dụng kết quả nếu score tốt (score < 0.85 nghĩa là tương đồng tốt)
-    SEMANTIC_SCORE_THRESHOLD = 0.85
+    # Xử lý kết quả
     if semantic_results:
-        # Lọc các kết quả có score tốt (score < threshold)
-        good_results = [
-            item for item in semantic_results 
-            if item.get("score") is not None and item.get("score") < SEMANTIC_SCORE_THRESHOLD
-        ]
+        # Nếu là query về lộ trình, không filter theo score threshold (lấy tất cả)
+        # Nếu không, chỉ lấy kết quả có score tốt
+        if workout_plan:
+            # Lấy tất cả kết quả, sắp xếp theo score
+            good_results = sorted(
+                [item for item in semantic_results if item.get("score") is not None],
+                key=lambda x: x.get("score", 1.0)
+            )
+        else:
+            # Filter theo score threshold cho query thông thường
+            SEMANTIC_SCORE_THRESHOLD = 0.85
+            good_results = [
+                item for item in semantic_results 
+                if item.get("score") is not None and item.get("score") < SEMANTIC_SCORE_THRESHOLD
+            ]
         
         if good_results:
-            semantic_exercises = [item.get("raw") for item in good_results if item.get("raw")]
+            # Lấy top exercises (nhiều hơn nếu là lộ trình)
+            max_exercises = MAX_CONTEXT_EXERCISES * 2 if workout_plan else MAX_CONTEXT_EXERCISES
+            top_results = good_results[:max_exercises]
+            semantic_exercises = [item.get("raw") for item in top_results if item.get("raw")]
             if semantic_exercises:
                 contexts = build_context_from_exercises(semantic_exercises)
                 return generate_answer_from_context(message, contexts)
+    
+    # Fallback: Nếu không có kết quả semantic search, vẫn trả về một số bài tập để tạo lộ trình
+    if workout_plan:
+        print(f"[ExerciseService] No semantic results for workout plan query, using all exercises as fallback")
+        all_exercises = get_all_exercises()
+        if all_exercises:
+            # Lấy một số bài tập đa dạng
+            import random
+            selected_exercises = random.sample(all_exercises, min(15, len(all_exercises)))
+            contexts = build_context_from_exercises(selected_exercises)
+            return generate_answer_from_context(message, contexts)
 
-    # Nếu không tìm thấy kết quả semantic search phù hợp (score quá cao = không tương đồng)
-    # Trả về thông báo chung - không dùng keyword check, hoàn toàn dựa vào vector similarity
+    # Nếu không tìm thấy kết quả semantic search phù hợp
     return "Mình chưa tìm thấy thông tin về bài tập bạn đang hỏi. Bạn có thể mô tả cụ thể hơn về bài tập hoặc nhóm cơ bạn muốn tập không?"
 

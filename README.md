@@ -63,10 +63,10 @@ brew install ollama
 curl -fsSL https://ollama.ai/install.sh | sh
 ```
 
-### 3. Tải model Llama 3
+### 3. Tải model DeepSeek R1
 
 ```bash
-ollama pull llama3:8b
+ollama pull deepseek-r1:14b
 ```
 
 ### 4. Khởi động Ollama
@@ -128,17 +128,11 @@ streamlit run streamlit_app.py
 ### Environment Variables
 
 ```bash
-# AI Provider
-AI_PROVIDER=ollama  # hoặc deepseek
-
-# Ollama Configuration
+# Ollama Configuration (chỉ sử dụng Ollama với deepseek-r1:14b)
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3:8b
-
-# DeepSeek Configuration (nếu dùng)
-DEEPSEEK_API_KEY=your_api_key
-DEEPSEEK_MODEL=deepseek-chat
-DEEPSEEK_BASE_URL=https://api.deepseek.com
+OLLAMA_MODEL=deepseek-r1:14b
+OLLAMA_TIMEOUT=120
+OLLAMA_MAX_TOKENS=2000
 
 # RAG Configuration
 EMBED_MODEL=dangvantuan/vietnamese-embedding
@@ -265,7 +259,7 @@ ollama list
 ollama serve
 
 # Kiểm tra model
-ollama pull llama3:8b
+ollama pull deepseek-r1:14b
 ```
 
 ### RAG Index chưa được build
