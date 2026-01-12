@@ -23,6 +23,23 @@ COUNT_QUERY_PATTERNS = [
     r"có bao nhiêu",
 ]
 
+# Guidance lines chung cho tất cả responses
+BASE_GUIDANCE_LINES = [
+    "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
+    "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
+    "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
+    "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
+
+]
+
+
+def is_workout_plan_query(message: str) -> bool:
+    """Kiểm tra xem query có phải về lộ trình/chương trình tập không."""
+    return any(keyword in message.lower() for keyword in [
+        "lộ trình", "chương trình", "schedule", "kế hoạch", "plan", 
+        "tuần", "ngày", "thứ", "1 tuần", "một tuần", "7 ngày"
+    ])
+
 
 def build_context_from_exercises(exercises: List[Dict]) -> List[str]:
     """Xây dựng context từ danh sách exercises."""
@@ -93,14 +110,13 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
         return "Xin lỗi, mình chưa tìm thấy thông tin về bài tập này trong dữ liệu hiện có."
 
     context_text = "\n\n".join(f"[Đoạn {idx}] {block}" for idx, block in enumerate(context_blocks, 1))
-    guidance_lines = [
-        "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
-        "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
-        "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
-        "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
-    ]
+    
+    # Sử dụng guidance lines chung
+    guidance_lines = BASE_GUIDANCE_LINES.copy()
+    
+    # Thêm guidance đặc biệt nếu có
     if extra_guidance:
-        guidance_lines.append(f"- {extra_guidance}")
+        guidance_lines.append(extra_guidance)
 
     prompt = (
         f"Ngữ cảnh:\n{context_text}\n\n"
@@ -255,31 +271,57 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
             extra_guidance="Trả lời rõ ràng tổng số bài tập và phân loại theo độ khó nếu có. KHÔNG liệt kê từng bài tập, chỉ trả lời về số lượng.",
         )
     
-    # Semantic search đơn giản - không enhance query, không filter/re-rank
+    # Kiểm tra xem có phải query về lộ trình/chương trình tập không
+    workout_plan = is_workout_plan_query(message)
+    
+    # Semantic search đơn giản
     semantic_results: List[Dict] = []
     try:
-        semantic_results = semantic_search(message, top_k=10)
+        # Nếu là query về lộ trình, tăng top_k để có nhiều bài tập đa dạng
+        search_top_k = 20 if workout_plan else 10
+        semantic_results = semantic_search(message, top_k=search_top_k)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
         import traceback
         traceback.print_exc()
 
-    # Chỉ sử dụng kết quả nếu score tốt (score < 0.85 nghĩa là tương đồng tốt)
-    SEMANTIC_SCORE_THRESHOLD = 0.85
+    # Xử lý kết quả
     if semantic_results:
-        # Lọc các kết quả có score tốt (score < threshold)
-        good_results = [
-            item for item in semantic_results 
-            if item.get("score") is not None and item.get("score") < SEMANTIC_SCORE_THRESHOLD
-        ]
+        # Nếu là query về lộ trình, không filter theo score threshold (lấy tất cả)
+        # Nếu không, chỉ lấy kết quả có score tốt
+        if workout_plan:
+            # Lấy tất cả kết quả, sắp xếp theo score
+            good_results = sorted(
+                [item for item in semantic_results if item.get("score") is not None],
+                key=lambda x: x.get("score", 1.0)
+            )
+        else:
+            # Filter theo score threshold cho query thông thường
+            SEMANTIC_SCORE_THRESHOLD = 0.85
+            good_results = [
+                item for item in semantic_results 
+                if item.get("score") is not None and item.get("score") < SEMANTIC_SCORE_THRESHOLD
+            ]
         
         if good_results:
-            # Lấy top exercises
-            top_results = good_results[:MAX_CONTEXT_EXERCISES]
+            # Lấy top exercises (nhiều hơn nếu là lộ trình)
+            max_exercises = MAX_CONTEXT_EXERCISES * 2 if workout_plan else MAX_CONTEXT_EXERCISES
+            top_results = good_results[:max_exercises]
             semantic_exercises = [item.get("raw") for item in top_results if item.get("raw")]
             if semantic_exercises:
                 contexts = build_context_from_exercises(semantic_exercises)
                 return generate_answer_from_context(message, contexts)
+    
+    # Fallback: Nếu không có kết quả semantic search, vẫn trả về một số bài tập để tạo lộ trình
+    if workout_plan:
+        print(f"[ExerciseService] No semantic results for workout plan query, using all exercises as fallback")
+        all_exercises = get_all_exercises()
+        if all_exercises:
+            # Lấy một số bài tập đa dạng
+            import random
+            selected_exercises = random.sample(all_exercises, min(15, len(all_exercises)))
+            contexts = build_context_from_exercises(selected_exercises)
+            return generate_answer_from_context(message, contexts)
 
     # Nếu không tìm thấy kết quả semantic search phù hợp
     return "Mình chưa tìm thấy thông tin về bài tập bạn đang hỏi. Bạn có thể mô tả cụ thể hơn về bài tập hoặc nhóm cơ bạn muốn tập không?"
