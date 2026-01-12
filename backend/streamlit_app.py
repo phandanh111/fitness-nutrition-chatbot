@@ -105,10 +105,42 @@ with st.sidebar:
     # AI Status
     st.subheader("🤖 Trạng thái AI")
     from utils.ollama_client import ollama_client
+    
+    # Lấy danh sách models có sẵn
+    available_models = ollama_client.get_available_models()
+    
+    # Khởi tạo selected_model trong session state nếu chưa có
+    if "selected_model" not in st.session_state:
+        st.session_state.selected_model = ollama_client.model
+    
+    # Model selector
+    if available_models:
+        # Đảm bảo selected_model có trong danh sách
+        if st.session_state.selected_model not in available_models:
+            st.session_state.selected_model = available_models[0] if available_models else ollama_client.model
+        
+        selected_model = st.selectbox(
+            "Chọn Model",
+            options=available_models,
+            index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0,
+            help="Chọn model AI để sử dụng cho chatbot"
+        )
+        
+        # Cập nhật model nếu user chọn khác
+        if selected_model != st.session_state.selected_model:
+            st.session_state.selected_model = selected_model
+            ollama_client.set_model(selected_model)
+            logger.info(f"[MODEL] Changed to: {selected_model}")
+            st.rerun()
+    else:
+        st.warning("⚠️ Không thể lấy danh sách models từ Ollama")
+        st.caption(f"Đang sử dụng: {ollama_client.model}")
+    
+    # Kiểm tra trạng thái Ollama
     status = ollama_client.test_connection()
     if status["available"]:
         st.success(f"✅ Ollama đang hoạt động")
-        st.caption(f"Model: {ollama_client.model}")
+        st.caption(f"Model hiện tại: **{ollama_client.model}**")
     else:
         st.error("❌ Ollama không khả dụng")
         st.caption(f"Lỗi: {status.get('error', 'Unknown')}")

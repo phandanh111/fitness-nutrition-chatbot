@@ -14,6 +14,11 @@ class OllamaClient:
         self.model = model or os.getenv("OLLAMA_MODEL", "deepseek-r1:14b")
         self.api_url = f"{self.base_url}/api/chat"
     
+    def set_model(self, model: str) -> None:
+        """Cập nhật model được sử dụng."""
+        self.model = model
+        print(f"[OllamaClient] Model changed to: {model}")
+    
     def is_available(self) -> bool:
         """
         Kiểm tra Ollama service có sẵn sàng không
