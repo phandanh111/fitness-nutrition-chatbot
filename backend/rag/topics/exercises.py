@@ -40,12 +40,13 @@ class ExercisesParser(TopicParser):
             # Parse các field từ content
             exercise_data = {
                 "id": int(exercise_num),
+                # name: tên bài tập (hiển thị chính)
                 "name": exercise_name,
-                "nameVi": "",
-                "nameEn": "",
                 "muscleGroup": "",
                 "difficulty": "",
                 "calories": "",
+                "description": "",
+                "benefits": "",
             }
 
             # Parse từng dòng
@@ -61,14 +62,18 @@ class ExercisesParser(TopicParser):
                 # Parse các field
                 if line.startswith("Nhóm cơ:"):
                     exercise_data["muscleGroup"] = line.replace("Nhóm cơ:", "").strip()
-                elif line.startswith("Tên tiếng Việt:"):
-                    exercise_data["nameVi"] = line.replace("Tên tiếng Việt:", "").strip()
-                elif line.startswith("Tên tiếng Anh:"):
-                    exercise_data["nameEn"] = line.replace("Tên tiếng Anh:", "").strip()
+                elif line.startswith("Tên bài tập:"):
+                    value = line.replace("Tên bài tập:", "").strip()
+                    # Ghi đè tên nếu có trong nội dung
+                    exercise_data["name"] = value
                 elif line.startswith("Độ khó:"):
                     exercise_data["difficulty"] = line.replace("Độ khó:", "").strip()
                 elif line.startswith("Kcal tiêu thụ:"):
                     exercise_data["calories"] = line.replace("Kcal tiêu thụ:", "").strip()
+                elif line.startswith("Mô tả:"):
+                    exercise_data["description"] = line.replace("Mô tả:", "").strip()
+                elif line.startswith("Lợi ích:"):
+                    exercise_data["benefits"] = line.replace("Lợi ích:", "").strip()
 
             exercises.append(exercise_data)
 
@@ -82,10 +87,8 @@ class ExercisesTextBuilder(TopicTextBuilder):
         """Xây dựng text chunk chi tiết từ exercise data."""
         parts = []
 
-        # Tên bài tập (ưu tiên tiếng Việt)
-        name_vi = item.get("nameVi", "")
-        name_en = item.get("nameEn", "")
-        name_display = name_vi if name_vi else (name_en if name_en else item.get("name", ""))
+        # Tên bài tập
+        name_display = item.get("name", "")
         
         if name_display:
             parts.append(f"Bài tập: {name_display}")
@@ -105,6 +108,14 @@ class ExercisesTextBuilder(TopicTextBuilder):
         if calories:
             parts.append(f"Kcal tiêu thụ: {calories}")
 
+        description = item.get("description", "")
+        if description:
+            parts.append(f"Mô tả: {description}")
+
+        benefits = item.get("benefits", "")
+        if benefits:
+            parts.append(f"Lợi ích: {benefits}")
+
         return "\n".join(parts)
 
 
@@ -114,12 +125,12 @@ class ExercisesMetadataBuilder(TopicMetadataBuilder):
     def build_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Xây dựng metadata từ exercise data."""
         return {
-            "name": item.get("nameVi") or item.get("nameEn") or item.get("name"),
-            "nameVi": item.get("nameVi", ""),
-            "nameEn": item.get("nameEn", ""),
+            "name": item.get("name", ""),
             "muscleGroup": item.get("muscleGroup", ""),
             "difficulty": item.get("difficulty", ""),
             "calories": item.get("calories", ""),
+            "description": item.get("description", ""),
+            "benefits": item.get("benefits", ""),
         }
 
 

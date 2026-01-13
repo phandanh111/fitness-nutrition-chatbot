@@ -13,22 +13,12 @@ from services.conversation_service import get_inbody_data, set_inbody_data
 
 MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
 
-COUNT_QUERY_PATTERNS = [
-    r"bao nhiêu",
-    r"tổng\s*(cộng)?",
-    r"có\s*mấy",
-    r"tổng số",
-    r"bao nhiêu (bài tập|exercise)",
-    r"mấy bài tập",
-    r"có bao nhiêu",
-]
-
 # Guidance lines chung cho tất cả responses
 BASE_GUIDANCE_LINES = [
     "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
     "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
     "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
-    "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
+    # "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
 
 ]
 
@@ -45,7 +35,7 @@ def build_context_from_exercises(exercises: List[Dict]) -> List[str]:
     """Xây dựng context từ danh sách exercises."""
     contexts: List[str] = []
     for exercise in exercises[:MAX_CONTEXT_EXERCISES]:
-        name = exercise.get("nameVi") or exercise.get("nameEn") or exercise.get("name", "Bài tập")
+        name = exercise.get("name", "Bài tập")
         muscle_group = exercise.get("muscleGroup", "")
         difficulty = exercise.get("difficulty", "")
         calories = exercise.get("calories", "")
@@ -69,39 +59,6 @@ def get_all_exercises() -> List[Dict]:
     except Exception as exc:
         print(f"[ExerciseService] Failed to load exercises: {exc}")
         return []
-
-
-def build_total_counts_context(exercises: List[Dict]) -> str:
-    """Xây dựng context về tổng số bài tập."""
-    total = len(exercises)
-    
-    # Đếm theo độ khó
-    difficulty_counts = {}
-    for ex in exercises:
-        diff = ex.get("difficulty", "").strip()
-        if diff:
-            difficulty_counts[diff] = difficulty_counts.get(diff, 0) + 1
-    
-    lines = [
-        f"Tổng số bài tập: {total}",
-    ]
-    
-    if difficulty_counts:
-        lines.append("\nPhân loại theo độ khó:")
-        for diff, count in sorted(difficulty_counts.items()):
-            lines.append(f"- {diff}: {count} bài tập")
-    
-    lines.append("\nDữ liệu này được tính trực tiếp từ file exercise.md.")
-    return "\n".join(lines)
-
-
-def is_count_query(message: str) -> bool:
-    """Kiểm tra xem câu hỏi có phải về số lượng không."""
-    lower = message.lower()
-    for pattern in COUNT_QUERY_PATTERNS:
-        if re.search(pattern, lower):
-            return True
-    return False
 
 
 def generate_answer_from_context(question: str, context_blocks: List[str], extra_guidance: Optional[str] = None) -> str:
@@ -258,18 +215,6 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
         session_id: Session ID (không sử dụng, giữ lại để tương thích)
     """
     print(f"[ExerciseService] Generating exercise response for message: {message}")
-    if is_count_query(message):
-        all_exercises = get_all_exercises()
-        if not all_exercises:
-            return "Xin lỗi, hiện chưa có dữ liệu về các bài tập trong hệ thống."
-        
-        total_context = build_total_counts_context(all_exercises)
-        print(f"[ExerciseService] Total context: {total_context}")
-        return generate_answer_from_context(
-            message,
-            [total_context],
-            extra_guidance="Trả lời rõ ràng tổng số bài tập và phân loại theo độ khó nếu có. KHÔNG liệt kê từng bài tập, chỉ trả lời về số lượng.",
-        )
     
     # Kiểm tra xem có phải query về lộ trình/chương trình tập không
     workout_plan = is_workout_plan_query(message)
