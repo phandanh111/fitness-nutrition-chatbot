@@ -25,9 +25,12 @@ def _detect_risk_tags(exercise_data: Dict[str, Any]) -> List[str]:
     """
     risk_tags = []
     
+    from utils.exercise_helpers import get_difficulty_normalized, get_muscle_group_normalized
+    from constants.exercise_constants import RISK_TAG_HIGH_PRESSURE_CORE
+    
     name = (exercise_data.get("name", "") or "").lower()
     description = (exercise_data.get("description", "") or "").lower()
-    muscle_group = (exercise_data.get("muscleGroup", "") or "").lower()
+    muscle_group = get_muscle_group_normalized(exercise_data)
     
     combined_text = f"{name} {description} {muscle_group}"
     
@@ -35,11 +38,12 @@ def _detect_risk_tags(exercise_data: Dict[str, Any]) -> List[str]:
     core_keywords = ["core", "bụng", "ab", "abs", "abdominal"]
     if any(keyword in combined_text for keyword in core_keywords):
         # Chỉ đánh dấu nếu là bài tập ADVANCED hoặc có từ "pressure", "intense"
-        difficulty = (exercise_data.get("difficulty", "") or "").lower()
-        if "advanced" in difficulty or "nâng cao" in difficulty:
-            risk_tags.append("HIGH_PRESSURE_CORE")
+        difficulty = get_difficulty_normalized(exercise_data)
+        from utils.exercise_helpers import is_difficulty_advanced
+        if is_difficulty_advanced(difficulty):
+            risk_tags.append(RISK_TAG_HIGH_PRESSURE_CORE)
         elif any(word in combined_text for word in ["pressure", "intense", "mạnh", "áp lực"]):
-            risk_tags.append("HIGH_PRESSURE_CORE")
+            risk_tags.append(RISK_TAG_HIGH_PRESSURE_CORE)
     
     return risk_tags
 

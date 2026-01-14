@@ -12,6 +12,42 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Any
 from utils.inbody_normalizer import UserSignals
+from utils.exercise_helpers import (
+    get_difficulty_normalized,
+    get_difficulty_upper,
+    get_muscle_group_normalized,
+    parse_risk_tags,
+    parse_calories,
+    is_difficulty_advanced,
+    is_difficulty_moderate,
+    is_difficulty_basic,
+    is_full_body_exercise,
+    is_lower_body_exercise,
+    has_risk_tag,
+)
+from constants.exercise_constants import (
+    RISK_TAG_HIGH_PRESSURE_CORE,
+    RISK_TAG_PRESSURE_HIGH,
+    CALORIE_MEDIUM_THRESHOLD,
+    CALORIE_HIGH_THRESHOLD,
+    CALORIE_LOW_THRESHOLD,
+    SCORE_DIFFICULTY_MODERATE,
+    SCORE_DIFFICULTY_BASIC,
+    SCORE_DIFFICULTY_ADVANCED,
+    SCORE_CALORIE_HIGH,
+    SCORE_CALORIE_LOW,
+    SCORE_RISK_HIGH_PRESSURE,
+    BONUS_FAT_LOSS_HIGH_CALORIE,
+    BONUS_FAT_LOSS_MODERATE,
+    BONUS_FAT_LOSS_BASIC,
+    BONUS_OVERWEIGHT_MODERATE,
+    BONUS_OVERWEIGHT_BASIC,
+    BONUS_OVERWEIGHT_ADVANCED,
+    BONUS_OVERWEIGHT_FULL_BODY,
+    BONUS_OVERWEIGHT_LOWER_BODY,
+    BONUS_UNDERWEIGHT_MODERATE,
+    BONUS_UNDERWEIGHT_BASIC,
+)
 
 
 class RuleEngine:
@@ -84,25 +120,21 @@ class RuleEngine:
 
             # Rule 1: Central Fat Protection
             if user_signals.central_fat:
-                risk_tags = exercise.get("risk_tags", [])
-                # Handle cả list và string (comma-separated)
-                if isinstance(risk_tags, str):
-                    risk_tags = [tag.strip() for tag in risk_tags.split(",") if tag.strip()] if risk_tags else []
-                if "HIGH_PRESSURE_CORE" in risk_tags:
+                if has_risk_tag(exercise, RISK_TAG_HIGH_PRESSURE_CORE):
                     should_block = True
-                    block_reason = "HIGH_PRESSURE_CORE (central fat detected)"
+                    block_reason = f"{RISK_TAG_HIGH_PRESSURE_CORE} (central fat detected)"
 
             # Rule 2: High Body Fat Limitation
             if user_signals.body_fat_status == "HIGH":
-                difficulty = (exercise.get("difficulty") or "").upper()
-                if "ADVANCED" in difficulty or "NÂNG CAO" in difficulty:
+                difficulty = get_difficulty_upper(exercise)
+                if is_difficulty_advanced(difficulty):
                     should_block = True
                     block_reason = "ADVANCED difficulty (high body fat)"
 
             # Rule 3: Obese BMI Limitation
             if user_signals.bmi_status == "OBESE":
-                difficulty = (exercise.get("difficulty") or "").upper()
-                if "ADVANCED" in difficulty or "NÂNG CAO" in difficulty:
+                difficulty = get_difficulty_upper(exercise)
+                if is_difficulty_advanced(difficulty):
                     should_block = True
                     block_reason = "ADVANCED difficulty (obese BMI)"
 
@@ -133,46 +165,40 @@ class RuleEngine:
             adjusted = exercise.copy()
             goal_bonus = 0.0
 
-            difficulty = (exercise.get("difficulty") or "").lower()
-            muscle_group = (exercise.get("muscleGroup") or "").lower()
-            
-            # Parse calories
-            calories_str = exercise.get("calories", "")
-            try:
-                calories = int(calories_str) if calories_str else 0
-            except (ValueError, TypeError):
-                calories = 0
+            difficulty = get_difficulty_normalized(exercise)
+            muscle_group = get_muscle_group_normalized(exercise)
+            calories = parse_calories(exercise)
 
             # Rule 1: Fat Loss Bias
             if user_signals.body_fat_status == "HIGH":
-                if calories > 200:
-                    goal_bonus += 2.0
-                if "moderate" in difficulty or "trung bình" in difficulty:
-                    goal_bonus += 3.0
-                elif "basic" in difficulty or "cơ bản" in difficulty:
-                    goal_bonus += 2.0
+                if calories > CALORIE_MEDIUM_THRESHOLD:
+                    goal_bonus += BONUS_FAT_LOSS_HIGH_CALORIE
+                if is_difficulty_moderate(difficulty):
+                    goal_bonus += BONUS_FAT_LOSS_MODERATE
+                elif is_difficulty_basic(difficulty):
+                    goal_bonus += BONUS_FAT_LOSS_BASIC
 
             # Rule 2: Overweight/Obesity Preference
             if user_signals.bmi_status in ("OVERWEIGHT", "OBESE"):
-                if "moderate" in difficulty or "trung bình" in difficulty:
-                    goal_bonus += 3.0
-                elif "basic" in difficulty or "cơ bản" in difficulty:
-                    goal_bonus += 2.0
-                elif "advanced" in difficulty or "nâng cao" in difficulty:
-                    goal_bonus -= 2.0
+                if is_difficulty_moderate(difficulty):
+                    goal_bonus += BONUS_OVERWEIGHT_MODERATE
+                elif is_difficulty_basic(difficulty):
+                    goal_bonus += BONUS_OVERWEIGHT_BASIC
+                elif is_difficulty_advanced(difficulty):
+                    goal_bonus += BONUS_OVERWEIGHT_ADVANCED
 
                 # Ưu tiên full body exercises
-                if "toàn thân" in muscle_group or "full body" in muscle_group:
-                    goal_bonus += 2.0
-                if "thân dưới" in muscle_group or "lower body" in muscle_group:
-                    goal_bonus += 1.0
+                if is_full_body_exercise(muscle_group):
+                    goal_bonus += BONUS_OVERWEIGHT_FULL_BODY
+                if is_lower_body_exercise(muscle_group):
+                    goal_bonus += BONUS_OVERWEIGHT_LOWER_BODY
 
             # Rule 3: Underweight Preference
             if user_signals.bmi_status == "UNDERWEIGHT":
-                if "moderate" in difficulty or "trung bình" in difficulty:
-                    goal_bonus += 2.0
-                elif "basic" in difficulty or "cơ bản" in difficulty:
-                    goal_bonus += 1.0
+                if is_difficulty_moderate(difficulty):
+                    goal_bonus += BONUS_UNDERWEIGHT_MODERATE
+                elif is_difficulty_basic(difficulty):
+                    goal_bonus += BONUS_UNDERWEIGHT_BASIC
 
             adjusted["goal_bonus"] = goal_bonus
             goal_adjusted.append(adjusted)
@@ -203,35 +229,26 @@ class RuleEngine:
         for exercise in exercises:
             score = 0.0
 
-            difficulty = (exercise.get("difficulty") or "").lower()
-            calories_str = exercise.get("calories", "")
-            
-            try:
-                calories = int(calories_str) if calories_str else 0
-            except (ValueError, TypeError):
-                calories = 0
+            difficulty = get_difficulty_normalized(exercise)
+            calories = parse_calories(exercise)
 
             # Scoring theo difficulty
-            if "moderate" in difficulty or "trung bình" in difficulty:
-                score += 3.0
-            elif "basic" in difficulty or "cơ bản" in difficulty:
-                score += 2.0
-            elif "advanced" in difficulty or "nâng cao" in difficulty:
-                score -= 2.0
+            if is_difficulty_moderate(difficulty):
+                score += SCORE_DIFFICULTY_MODERATE
+            elif is_difficulty_basic(difficulty):
+                score += SCORE_DIFFICULTY_BASIC
+            elif is_difficulty_advanced(difficulty):
+                score += SCORE_DIFFICULTY_ADVANCED
 
             # Scoring theo calories
-            if calories > 250:
-                score += 2.0
-            elif calories < 150:
-                score -= 1.0
+            if calories > CALORIE_HIGH_THRESHOLD:
+                score += SCORE_CALORIE_HIGH
+            elif calories < CALORIE_LOW_THRESHOLD:
+                score += SCORE_CALORIE_LOW
 
             # Scoring theo risk_tags
-            risk_tags = exercise.get("risk_tags", [])
-            # Handle cả list và string (comma-separated)
-            if isinstance(risk_tags, str):
-                risk_tags = [tag.strip() for tag in risk_tags.split(",") if tag.strip()] if risk_tags else []
-            if "HIGH_PRESSURE_CORE" in risk_tags or "PRESSURE_HIGH" in risk_tags:
-                score -= 3.0
+            if has_risk_tag(exercise, RISK_TAG_HIGH_PRESSURE_CORE) or has_risk_tag(exercise, RISK_TAG_PRESSURE_HIGH):
+                score += SCORE_RISK_HIGH_PRESSURE
 
             # Cộng goal_bonus từ Layer 2
             goal_bonus = exercise.get("goal_bonus", 0.0)

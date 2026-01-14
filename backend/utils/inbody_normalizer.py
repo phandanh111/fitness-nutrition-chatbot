@@ -3,6 +3,18 @@
 from __future__ import annotations
 
 from typing import Dict, Optional, Any, Literal
+from constants.exercise_constants import (
+    BMI_UNDERWEIGHT_THRESHOLD,
+    BMI_NORMAL_THRESHOLD,
+    BMI_OVERWEIGHT_THRESHOLD,
+    BODY_FAT_MALE_LOW,
+    BODY_FAT_MALE_NORMAL,
+    BODY_FAT_FEMALE_LOW,
+    BODY_FAT_FEMALE_NORMAL,
+    BODY_FAT_UNKNOWN_LOW,
+    BODY_FAT_UNKNOWN_NORMAL,
+    CENTRAL_FAT_BMI_THRESHOLD,
+)
 
 # User Signal Types
 BMIStatus = Literal["UNDERWEIGHT", "NORMAL", "OVERWEIGHT", "OBESE", "UNKNOWN"]
@@ -110,11 +122,11 @@ def _classify_bmi_status(bmi: Optional[float]) -> BMIStatus:
     """
     if bmi is None:
         return "UNKNOWN"
-    if bmi < 18.5:
+    if bmi < BMI_UNDERWEIGHT_THRESHOLD:
         return "UNDERWEIGHT"
-    if bmi < 23:
+    if bmi < BMI_NORMAL_THRESHOLD:
         return "NORMAL"
-    if bmi < 27.5:
+    if bmi < BMI_OVERWEIGHT_THRESHOLD:
         return "OVERWEIGHT"
     return "OBESE"
 
@@ -139,24 +151,24 @@ def _classify_body_fat_status(inbody_data: Dict[str, Any]) -> BodyFatStatus:
 
         # Ngưỡng theo giới tính
         if gender in ["male", "nam"]:
-            if pbf < 10:
+            if pbf < BODY_FAT_MALE_LOW:
                 return "LOW"
-            elif pbf <= 20:
+            elif pbf <= BODY_FAT_MALE_NORMAL:
                 return "NORMAL"
             else:
                 return "HIGH"
         elif gender in ["female", "nữ"]:
-            if pbf < 20:
+            if pbf < BODY_FAT_FEMALE_LOW:
                 return "LOW"
-            elif pbf <= 30:
+            elif pbf <= BODY_FAT_FEMALE_NORMAL:
                 return "NORMAL"
             else:
                 return "HIGH"
         else:
             # Không biết giới tính, dùng ngưỡng trung bình
-            if pbf < 15:
+            if pbf < BODY_FAT_UNKNOWN_LOW:
                 return "LOW"
-            elif pbf <= 25:
+            elif pbf <= BODY_FAT_UNKNOWN_NORMAL:
                 return "NORMAL"
             else:
                 return "HIGH"
@@ -180,9 +192,9 @@ def _classify_muscle_status(inbody_data: Dict[str, Any]) -> MuscleStatus:
             return "UNKNOWN"
 
         # Heuristic: Nếu BMI cao nhưng body fat không cao -> có thể muscle tốt
-        if bmi >= 23 and body_fat_status != "HIGH":
+        if bmi >= BMI_NORMAL_THRESHOLD and body_fat_status != "HIGH":
             return "NORMAL"  # hoặc HIGH nếu có thêm dữ liệu
-        elif bmi < 18.5 and body_fat_status == "LOW":
+        elif bmi < BMI_UNDERWEIGHT_THRESHOLD and body_fat_status == "LOW":
             return "LOW"
         else:
             return "NORMAL"  # Mặc định
@@ -205,7 +217,7 @@ def _detect_central_fat(inbody_data: Dict[str, Any]) -> bool:
             return False
 
         # Heuristic đơn giản: BMI cao + body fat cao -> có thể có central fat
-        if bmi >= 23 and body_fat_status == "HIGH":
+        if bmi >= CENTRAL_FAT_BMI_THRESHOLD and body_fat_status == "HIGH":
             return True
 
         # Có thể thêm logic dựa trên WHR nếu có trong InBody data
