@@ -167,18 +167,10 @@ def view_vectors(topic: str):
     print("=" * 80)
     print(f"Tổng số vectors: {len(ids)}")
     
-    # Đếm theo city (hữu ích cho clubs, giữ lại cho compat)
+    # Thống kê metadata khác (nếu có)
     if metadatas:
-        cities = {}
-        for meta in metadatas:
-            if meta and meta.get("city"):
-                city = meta["city"]
-                cities[city] = cities.get(city, 0) + 1
-        
-        if cities:
-            print(f"\n📍 Phân bố theo thành phố:")
-            for city, count in sorted(cities.items(), key=lambda x: x[1], reverse=True):
-                print(f"   {city}: {count} clubs")
+        # Có thể thêm thống kê khác nếu cần
+        pass
     
     print("\n" + "=" * 80)
     print("💡 HƯỚNG DẪN:")

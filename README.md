@@ -1,14 +1,14 @@
-# The New Gym Chatbot - RAG System
+# The New Gym Chatbot - RAG System với Rule Engine
 
-Chatbot tư vấn thông tin về chi nhánh và bài tập của The New Gym sử dụng RAG (Retrieval-Augmented Generation) với Ollama và vector search.
+Chatbot tư vấn về bài tập của The New Gym sử dụng **RAG (Retrieval-Augmented Generation)** kết hợp với **Rule Engine** để đảm bảo an toàn và cá nhân hóa gợi ý bài tập dựa trên thể trạng người dùng.
 
 ## ✨ Tính năng
 
-- 🤖 **AI Chatbot**: Tư vấn thông tin chi nhánh và bài tập bằng tiếng Việt
+- 🤖 **AI Chatbot**: Tư vấn về bài tập của The New Gym bằng tiếng Việt
 - 🔍 **Semantic Search**: Tìm kiếm thông minh dựa trên ngữ nghĩa (RAG)
-- 📍 **Thông tin chi nhánh**: Tìm kiếm và tư vấn về các chi nhánh The New Gym
 - 💪 **Thông tin bài tập**: Tư vấn về các bài tập thể hình
-- 🎯 **Query Classification**: Tự động phân loại câu hỏi (clubs, exercises, general)
+- 🧠 **Rule Engine**: Hệ thống quyết định an toàn, cá nhân hóa bài tập dựa trên InBody data
+- 🎯 **Query Classification**: Tự động phân loại câu hỏi (exercises, general)
 - 📱 **Giao diện web**: Streamlit - đơn giản và dễ sử dụng
 - 🚀 **Chạy local**: Không cần API key, hoàn toàn miễn phí với Ollama
 
@@ -22,7 +22,98 @@ Chatbot tư vấn thông tin về chi nhánh và bài tập của The New Gym s�
 - **Sentence Transformers**: Vietnamese embedding model (`dangvantuan/vietnamese-embedding`)
 - **Python 3.8+**
 
-## 🏗️ Kiến trúc
+## 🏗️ Kiến trúc Hệ Thống
+
+### Tổng quan Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    USER QUERY                                   │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              QUERY CLASSIFICATION                               │
+│  (Exercises / General)                                          │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       ▼
+              ┌──────────────────────┐
+              │  EXERCISES FLOW      │
+              │  (với Rule Engine)   │
+              └──────────────────────┘
+```
+
+### Exercises Flow (với Rule Engine)
+
+```
+User Query về bài tập
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  1. Parse InBody Data (nếu có)      │
+│     - Từ message hoặc session       │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  2. Semantic Search (RAG)           │
+│     - Tìm bài tập liên quan         │
+│     - Trả về top K exercises        │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  3. Rule Engine (nếu có InBody)     │
+│     ├─ Normalize InBody → Signals   │
+│     ├─ Safety Filter (hard-block)   │
+│     ├─ Goal Filter (scoring)        │
+│     └─ Scoring & Ranking            │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  4. LLM Presentation                │
+│     - Tạo câu trả lời từ context    │
+│     - Format theo yêu cầu           │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+         Response cho User
+```
+
+### Rule Engine - 3 Layers
+
+```
+┌─────────────────────────────────────────┐
+│  Layer 1: Safety Filter                 │
+│  - Block ADVANCED nếu obese/high fat    │
+│  - Block HIGH_PRESSURE_CORE nếu có      │
+│    central fat                          │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  Layer 2: Goal Filter                   │
+│  - Ưu tiên MODERATE/BASIC cho overweight│
+│  - Ưu tiên kcal cao cho fat loss        │
+│  - Ưu tiên full body exercises          │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  Layer 3: Scoring & Ranking             │
+│  - Tính điểm theo difficulty            │
+│  - Tính điểm theo calories              │
+│  - Trừ điểm theo risk tags              │
+│  - Sắp xếp và filter score < 0          │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+      Allowed Exercises List
+```
+
+## 🏗️ Kiến trúc Code
 
 ### Unified RAG System
 
@@ -32,17 +123,28 @@ Hệ thống sử dụng **Unified RAG System** với topic registry, cho phép 
 backend/rag/
 ├── base_rag.py          # Base class chung cho tất cả topics
 ├── unified_rag.py       # Unified RAG system với topic registry
-├── club_rag.py          # Wrapper cho clubs topic (backward compatibility)
 ├── exercise_rag.py      # Wrapper cho exercises topic (backward compatibility)
 └── topics/
-    ├── clubs.py         # Configuration cho clubs topic
     └── exercises.py     # Configuration cho exercises topic
+```
+
+### Rule Engine System
+
+```
+backend/
+├── services/
+│   ├── rule_engine.py           # Rule Engine với 3 layers
+│   └── exercise_service.py      # Exercise query handling (tích hợp Rule Engine)
+├── utils/
+│   ├── inbody_normalizer.py     # Chuẩn hóa InBody → User Signals
+│   └── exercise_helpers.py      # Helper functions chung
+└── constants/
+    └── exercise_constants.py    # Tất cả constants (thresholds, scores, etc.)
 ```
 
 ### Topics hiện có
 
-1. **Clubs**: Thông tin về các chi nhánh The New Gym
-2. **Exercises**: Thông tin về các bài tập thể hình
+1. **Exercises**: Thông tin về các bài tập thể hình (có Rule Engine)
 
 ## 🚀 Cài đặt nhanh
 
@@ -87,11 +189,8 @@ pip install -r requirements.txt
 ### 6. Build RAG Index
 
 ```bash
-# Build index cho clubs và exercises
-python scripts/build_club_index.py --force
-
-# Hoặc chỉ build clubs
-python scripts/build_club_index.py --force --skip-exercises
+# Build index cho exercises
+python scripts/build_exercise_index.py --force
 ```
 
 ### 7. Cấu hình Environment
@@ -119,16 +218,41 @@ streamlit run streamlit_app.py
 
 1. Mở trình duyệt tại `http://localhost:8501` (hoặc port được hiển thị)
 2. Chat với bot về:
-   - Thông tin chi nhánh: "Bạn có chi nhánh nào ở Gò Vấp không?"
-   - Thông tin bài tập: "Bài tập nào tốt cho ngực?"
-   - Câu hỏi chung về The New Gym
+   - **Thông tin bài tập**: "Bài tập nào tốt cho ngực?"
+   - **Bài tập cá nhân hóa**: Nhập InBody data trước, sau đó hỏi về bài tập
+   - **Câu hỏi chung**: Các câu hỏi về dịch vụ The New Gym
+
+### Ví dụ với InBody Data
+
+**Bước 1**: Nhập InBody data vào chat
+
+```
+Tôi nặng 80kg, cao 170cm, BMI 27.7, tỷ lệ mỡ 26%, giới tính nam
+```
+
+**Bước 2**: Hỏi về bài tập
+
+```
+Bài tập nào tốt cho tôi?
+```
+
+**Kết quả**: Bot sẽ:
+
+- Parse InBody data → User Signals (OVERWEIGHT, HIGH body fat, CENTRAL_FAT)
+- Tìm bài tập liên quan bằng semantic search
+- Áp dụng Rule Engine:
+  - Block ADVANCED exercises (vì high body fat)
+  - Block HIGH_PRESSURE_CORE exercises (vì central fat)
+  - Ưu tiên MODERATE/BASIC exercises
+  - Ưu tiên full body exercises
+- Trả về danh sách bài tập an toàn và phù hợp
 
 ## 🔧 Cấu hình
 
 ### Environment Variables
 
 ```bash
-# Ollama Configuration (chỉ sử dụng Ollama với deepseek-r1:14b)
+# Ollama Configuration
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=deepseek-r1:14b
 OLLAMA_TIMEOUT=120
@@ -136,9 +260,7 @@ OLLAMA_MAX_TOKENS=2000
 
 # RAG Configuration
 EMBED_MODEL=dangvantuan/vietnamese-embedding
-CLUB_EMBED_LIMIT=2000
 EXERCISE_EMBED_LIMIT=500
-CLUB_CONTEXT_LIMIT=4
 EXERCISE_CONTEXT_LIMIT=4
 
 # Server Configuration
@@ -146,19 +268,14 @@ HOST=0.0.0.0
 PORT=8000
 ```
 
-### API Endpoints (Optional - FastAPI)
+### Rule Engine Configuration
 
-Nếu bạn muốn sử dụng FastAPI server (chạy `python main.py`), các endpoints sau sẽ có sẵn:
+Các constants có thể chỉnh sửa trong `backend/constants/exercise_constants.py`:
 
-- `GET /`: Health check
-- `GET /ai-status`: Kiểm tra trạng thái AI
-- `POST /chat`: Chat với bot
-- `GET /clubs`: Lấy danh sách clubs
-- `GET /clubs/active`: Lấy clubs đang hoạt động
-- `GET /clubs/search`: Tìm kiếm clubs
-- `DELETE /sessions/{session_id}`: Xóa lịch sử hội thoại
-
-**Lưu ý**: Streamlit app không cần FastAPI server, nó gọi trực tiếp các services từ Python.
+- **BMI Thresholds**: `BMI_UNDERWEIGHT_THRESHOLD`, `BMI_NORMAL_THRESHOLD`, `BMI_OVERWEIGHT_THRESHOLD`
+- **Body Fat Thresholds**: Theo giới tính (nam/nữ)
+- **Scoring Values**: Điểm cho difficulty, calories, risk tags
+- **Calorie Thresholds**: `CALORIE_LOW_THRESHOLD`, `CALORIE_MEDIUM_THRESHOLD`, `CALORIE_HIGH_THRESHOLD`
 
 ## 📁 Cấu trúc Project
 
@@ -171,7 +288,6 @@ chat-bot/
 │   ├── env.example               # Environment template
 │   ├── prompt_system.txt         # AI system prompt
 │   ├── data/
-│   │   ├── clubs.md              # Dữ liệu clubs (markdown)
 │   │   ├── exercise.md           # Dữ liệu exercises (markdown)
 │   │   └── rag/
 │   │       ├── chroma/           # ChromaDB storage
@@ -179,60 +295,236 @@ chat-bot/
 │   ├── rag/
 │   │   ├── base_rag.py           # Base RAG class
 │   │   ├── unified_rag.py        # Unified RAG system
-│   │   ├── club_rag.py           # Clubs wrapper
 │   │   ├── exercise_rag.py       # Exercises wrapper
 │   │   └── topics/
-│   │       ├── clubs.py          # Clubs topic config
 │   │       └── exercises.py      # Exercises topic config
 │   ├── services/
-│   │   ├── club_service.py       # Club query handling
-│   │   ├── exercise_service.py   # Exercise query handling
+│   │   ├── exercise_service.py   # Exercise query handling (tích hợp Rule Engine)
+│   │   ├── rule_engine.py         # Rule Engine với 3 layers
 │   │   ├── llm_service.py        # LLM integration
-│   │   └── conversation_service.py # Conversation history
+│   │   └── conversation_service.py # Conversation history & InBody storage
 │   ├── utils/
 │   │   ├── query_classifier.py   # Query classification
-│   │   ├── clubs_client.py       # Clubs data client
+│   │   ├── inbody_normalizer.py  # Chuẩn hóa InBody → User Signals
+│   │   ├── exercise_helpers.py   # Helper functions cho exercise parsing
 │   │   └── ollama_client.py      # Ollama integration
 │   ├── constants/
-│   │   └── rag_prompts.py        # RAG prompts
+│   │   ├── rag_prompts.py        # RAG prompts
+│   │   └── exercise_constants.py # Constants cho Rule Engine
 │   └── scripts/
-│       └── build_club_index.py   # Build RAG index script
+│       ├── build_exercise_index.py # Build RAG index script
+│       ├── test_rule_engine.py    # Test Rule Engine
+│       ├── view_chroma_data.py    # View ChromaDB data
+│       └── view_vectors.py        # View vectors
 ├── docs/
 │   ├── rag_processing_flow.md    # RAG flow documentation
 │   └── how_vector_search_works.md # Vector search explanation
 ├── run_streamlit.sh              # Quick start script (Streamlit)
-└── README.md                     # This file
+├── rule-engine.md                 # Rule Engine design document
+├── TEST_RULE_ENGINE.md            # Hướng dẫn test Rule Engine
+├── OPTIMIZATION_SUMMARY.md        # Tóm tắt tối ưu code
+└── README.md                      # This file
+```
+
+## 🔄 Flow Chi Tiết
+
+### 1. User Query → Response Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: User gửi message                                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 2: Parse InBody Data (nếu có)                         │
+│  - Tìm pattern: weight, height, BMI, body fat, gender       │
+│  - Lưu vào session nếu parse được                           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 3: Query Classification                               │
+│  - Semantic search "exercises"                              │
+│  - Phân loại exercises hoặc general                         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+              ┌──────────────────────┐
+              │  EXERCISES FLOW      │
+              │                      │
+              │  1. Semantic Search  │
+              │  2. Rule Engine      │
+              │  3. LLM Response     │
+              │                      │
+              └──────────────────────┘
+```
+
+### 2. Exercises Flow Chi Tiết
+
+```
+User: "Bài tập nào tốt cho ngực?"
+      (có InBody: 80kg, 170cm, BMI 27.7, 26% fat)
+
+┌─────────────────────────────────────────────────────────────┐
+│  1. Parse InBody từ session                                 │
+│     → {weight: 80, height: 170, bmi: 27.7, pbf: 26}         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. Semantic Search (RAG)                                   │
+│     → Tìm top 10 exercises về "ngực"                        │
+│     → ["Chest Builder", "Chest Power", "Chest & Tri..."]    │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. Normalize InBody → User Signals                         │
+│     → BMI_STATUS: OVERWEIGHT                                │
+│     → BODY_FAT_STATUS: HIGH                                 │
+│     → CENTRAL_FAT: true                                     │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. Rule Engine - Safety Filter                             │
+│     ✗ Block "Chest & Tri Terror" (ADVANCED)                 │
+│     ✗ Block exercises với HIGH_PRESSURE_CORE                │
+│     ✓ Allow: "Chest Builder", "Chest Power", "Chest & Abs"  │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  5. Rule Engine - Goal Filter                               │
+│     +3 điểm cho MODERATE exercises                          │
+│     +2 điểm cho BASIC exercises                             │
+│     +2 điểm cho full body exercises                         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  6. Rule Engine - Scoring & Ranking                         │
+│     Chest Builder: score = 5.0                              │
+│     Chest Power: score = 4.0                                │
+│     Chest & Abs: score = 3.0                                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  7. LLM Presentation                                        │
+│     → Tạo câu trả lời từ top exercises                      │
+│     → Format theo yêu cầu (JSON cho workout plan)           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+              Response cho User
+```
+
+### 3. Rule Engine - 3 Layers Chi Tiết
+
+#### Layer 1: Safety Filter (Hard-Block)
+
+```python
+# Rule 1: Central Fat Protection
+IF CENTRAL_FAT = true:
+    BLOCK exercises với risk_tag = HIGH_PRESSURE_CORE
+
+# Rule 2: High Body Fat Limitation
+IF BODY_FAT_STATUS = HIGH:
+    BLOCK difficulty = ADVANCED
+
+# Rule 3: Obese BMI Limitation
+IF BMI_STATUS = OBESE:
+    BLOCK difficulty = ADVANCED
+```
+
+#### Layer 2: Goal Filter (Scoring Adjustment)
+
+```python
+# Rule 1: Fat Loss Bias
+IF BODY_FAT_STATUS = HIGH:
+    +2 điểm nếu calories > 200
+    +3 điểm nếu MODERATE difficulty
+    +2 điểm nếu BASIC difficulty
+
+# Rule 2: Overweight/Obesity Preference
+IF BMI_STATUS in (OVERWEIGHT, OBESE):
+    +3 điểm nếu MODERATE
+    +2 điểm nếu BASIC
+    -2 điểm nếu ADVANCED
+    +2 điểm nếu full body exercise
+
+# Rule 3: Underweight Preference
+IF BMI_STATUS = UNDERWEIGHT:
+    +2 điểm nếu MODERATE
+    +1 điểm nếu BASIC
+```
+
+#### Layer 3: Scoring & Ranking
+
+```python
+# Base Scoring
+MODERATE difficulty: +3 điểm
+BASIC difficulty: +2 điểm
+ADVANCED difficulty: -2 điểm
+
+calories > 250: +2 điểm
+calories < 150: -1 điểm
+
+HIGH_PRESSURE_CORE risk: -3 điểm
+
+# Final Score = Base Score + Goal Bonus
+# Filter: score >= 0
+# Sort: descending (cao nhất trước)
 ```
 
 ## 🎯 Ví dụ sử dụng
 
-### Chat với bot về chi nhánh:
-
-```
-User: "Bạn có chi nhánh nào ở Gò Vấp không?"
-
-Bot: "Mình tìm thấy X chi nhánh ở Gò Vấp:
-- [Chi nhánh A](link) - Địa chỉ...
-- [Chi nhánh B](link) - Địa chỉ..."
-```
-
-### Chat với bot về bài tập:
+### Chat với bot về bài tập (không có InBody):
 
 ```
 User: "Bài tập nào tốt cho ngực?"
 
 Bot: "Mình gợi ý một số bài tập cho ngực:
-- [Bài tập 1] - Nhóm cơ: Ngực, Độ khó: Trung bình
-- [Bài tập 2] - Nhóm cơ: Ngực, Độ khó: Dễ..."
+- [Chest Builder] - Nhóm cơ: Ngực, Độ khó: Trung bình
+- [Chest Power] - Nhóm cơ: Ngực, Độ khó: Trung bình..."
+```
+
+### Chat với bot về bài tập (có InBody):
+
+```
+User: "Tôi nặng 80kg, cao 170cm, BMI 27.7, tỷ lệ mỡ 26%, giới tính nam"
+Bot: "Đã lưu thông tin InBody của bạn."
+
+User: "Bài tập nào tốt cho tôi?"
+
+Bot: "Dựa trên thể trạng của bạn, mình gợi ý:
+- [Chest Builder] - MODERATE, 280 kcal
+- [Chest Power] - MODERATE, 260 kcal
+- [Chest & Abs] - BASIC, 130 kcal
+
+Lưu ý: Mình đã loại bỏ các bài tập ADVANCED và bài tập có áp lực cao lên core để đảm bảo an toàn."
 ```
 
 ## 🔍 Query Classification
 
 Hệ thống tự động phân loại câu hỏi bằng semantic search:
 
-1. **Clubs**: Câu hỏi về chi nhánh, địa điểm, khu vực
-2. **Exercises**: Câu hỏi về bài tập, nhóm cơ, tập luyện
-3. **General**: Câu hỏi chung về The New Gym
+1. **Exercises**: Câu hỏi về bài tập, nhóm cơ, tập luyện
+2. **General**: Câu hỏi chung về The New Gym và dịch vụ
+
+## 🧪 Testing
+
+### Test Rule Engine
+
+```bash
+cd backend
+source venv/bin/activate
+python scripts/test_rule_engine.py
+```
+
+Xem chi tiết trong [TEST_RULE_ENGINE.md](TEST_RULE_ENGINE.md)
 
 ## 🚀 Script tự động
 
@@ -267,7 +559,7 @@ ollama pull deepseek-r1:14b
 ```bash
 # Build index
 cd backend
-python scripts/build_club_index.py --force
+python scripts/build_exercise_index.py --force
 ```
 
 ### Backend/Streamlit lỗi
@@ -285,10 +577,43 @@ cat .env
 streamlit run streamlit_app.py
 ```
 
+### Rule Engine không hoạt động
+
+1. Kiểm tra InBody data có được parse không (xem console logs)
+2. Kiểm tra imports:
+   ```bash
+   python -c "from services.rule_engine import RuleEngine; print('OK')"
+   ```
+3. Xem chi tiết trong [TEST_RULE_ENGINE.md](TEST_RULE_ENGINE.md)
+
 ## 📚 Tài liệu
 
+- [Rule Engine Design](rule-engine.md): Chi tiết về Rule Engine
 - [RAG Processing Flow](docs/rag_processing_flow.md): Chi tiết về luồng xử lý RAG
 - [How Vector Search Works](docs/how_vector_search_works.md): Giải thích cách vector search hoạt động
+- [Test Rule Engine](TEST_RULE_ENGINE.md): Hướng dẫn test Rule Engine
+- [Optimization Summary](OPTIMIZATION_SUMMARY.md): Tóm tắt tối ưu code
+
+## 🎯 Nguyên tắc thiết kế
+
+### Rule Engine
+
+1. **KHÔNG dùng LLM** để quyết định
+2. **KHÔNG dùng text prompt** cho logic
+3. Chỉ làm việc với **dữ liệu đã chuẩn hóa**
+4. **Deterministic** - cùng input → cùng output
+5. **Audit & Debug** được - có thể trace mọi quyết định
+6. **Chạy trước RAG & LLM** - đảm bảo an toàn
+
+### Kiến trúc
+
+```
+Rule Engine = NÃO (quyết định)
+RAG = TRÍ NHỚ (tìm kiếm)
+LLM = MIỆNG NÓI (trình bày)
+```
+
+Nếu LLM tắt → hệ vẫn chạy và trả về bài tập an toàn.
 
 ## 📝 License
 

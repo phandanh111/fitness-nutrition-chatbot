@@ -36,7 +36,7 @@ def load_system_prompt():
         with open("prompt_system.txt", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về thông tin chi nhánh và các câu hỏi khác về The New Gym."
+        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về bài tập và các câu hỏi khác về The New Gym."
 
 # Page configuration
 st.set_page_config(
@@ -95,7 +95,7 @@ with st.sidebar:
         # Reset welcome message
         welcome_msg = {
             "role": "assistant",
-            "content": "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Thông tin về các chi nhánh/clubs\n• Tư vấn dinh dưỡng và thể hình\n• Câu hỏi về dịch vụ của The New Gym\n• Tư vấn về chương trình tập luyện\n\nBạn cần hỗ trợ gì hôm nay?"
+            "content": "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Tư vấn về bài tập và chương trình tập luyện\n• Câu hỏi về dịch vụ của The New Gym\n• Gợi ý bài tập phù hợp với thể trạng của bạn\n\nBạn cần hỗ trợ gì hôm nay?"
         }
         st.session_state.messages = [welcome_msg]
         st.rerun()

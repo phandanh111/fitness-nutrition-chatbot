@@ -136,7 +136,7 @@ class BaseRAG:
         Initialize RAG cho một topic.
 
         Args:
-            topic_name: Tên topic (ví dụ: "clubs", "exercises")
+            topic_name: Tên topic (ví dụ: "exercises")
             collection_name: Tên collection trong ChromaDB
             parser: Parser để parse dữ liệu từ source
             text_builder: Builder để xây dựng text từ item
