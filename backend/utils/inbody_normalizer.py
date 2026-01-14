@@ -204,12 +204,28 @@ def _classify_muscle_status(inbody_data: Dict[str, Any]) -> MuscleStatus:
 
 def _detect_central_fat(inbody_data: Dict[str, Any]) -> bool:
     """
-    Phát hiện Central Fat (mỡ bụng) dựa trên WHR hoặc heuristic.
+    Phát hiện Central Fat (mỡ bụng) dựa trên segmental_fat hoặc heuristic.
     
-    Tạm thời dùng heuristic:
-    - Nếu BMI >= 23 và BODY_FAT_STATUS = HIGH -> có thể có central fat
+    Ưu tiên:
+    1. Dùng segmental_fat.trunk_fat_percentage nếu có (chính xác nhất)
+    2. Fallback: BMI >= 23 và BODY_FAT_STATUS = HIGH
     """
     try:
+        # Ưu tiên: Dùng segmental_fat data nếu có
+        segmental_fat = inbody_data.get("segmental_fat", {}) or {}
+        trunk_fat_pct = segmental_fat.get("trunk_fat_percentage")
+        trunk_status = segmental_fat.get("trunk_status", "")
+        
+        if trunk_fat_pct is not None:
+            try:
+                trunk_fat_pct_float = float(trunk_fat_pct)
+                # Nếu trunk fat percentage > 100% (so với chuẩn) hoặc status = "Over" -> có central fat
+                if trunk_fat_pct_float > 100.0 or trunk_status == "Over":
+                    return True
+            except (ValueError, TypeError):
+                pass
+        
+        # Fallback: Dùng heuristic nếu không có segmental_fat data
         bmi = _compute_bmi_from_inbody(inbody_data)
         body_fat_status = _classify_body_fat_status(inbody_data)
 
@@ -219,9 +235,6 @@ def _detect_central_fat(inbody_data: Dict[str, Any]) -> bool:
         # Heuristic đơn giản: BMI cao + body fat cao -> có thể có central fat
         if bmi >= CENTRAL_FAT_BMI_THRESHOLD and body_fat_status == "HIGH":
             return True
-
-        # Có thể thêm logic dựa trên WHR nếu có trong InBody data
-        # Ví dụ: obesity.get("whr") > 0.9 (nam) hoặc > 0.85 (nữ)
 
         return False
     except Exception:

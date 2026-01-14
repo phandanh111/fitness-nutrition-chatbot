@@ -13,7 +13,7 @@ from services.conversation_service import get_inbody_data
 from services.rule_engine import RuleEngine
 from utils.inbody_normalizer import normalize_inbody_data
 
-MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "15"))
+MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
 
 # Guidance lines chung cho tất cả responses
 BASE_GUIDANCE_LINES = [
@@ -32,12 +32,6 @@ NORMAL_QUERY_GUIDANCE = [
     '    "độ_khó": "BASIC|MODERATE|ADVANCED (lấy từ \"Độ khó:\" trong context)",',
     '    "kcal_tiêu_thụ": số_calo (lấy số từ \"Kcal tiêu thụ:\" trong context)',
     "  }",
-    "Lưu ý quan trọng:",
-    "  - nhóm_cơ phải là ARRAY, không phải string.",
-    "  - Nếu trong context có \"Nhóm cơ: A, B, C\" thì nhóm_cơ = [\"A\", \"B\", \"C\"]",
-    "  - Nếu chỉ có 1 nhóm cơ thì nhóm_cơ = [\"Nhóm cơ đó\"]",
-    "  - độ_khó phải là một trong: \"BASIC\", \"MODERATE\", \"ADVANCED\"",
-    "  - kcal_tiêu_thụ phải là số nguyên (integer), không phải string",
     "Chỉ trả về các bài tập có trong ngữ cảnh, không tự tạo thêm.",
 ]
 
@@ -51,13 +45,7 @@ WORKOUT_PLAN_GUIDANCE = [
     '    "độ_khó": "BASIC|MODERATE|ADVANCED (lấy từ \"Độ khó:\" trong context)",',
     '    "kcal_tiêu_thụ": số_calo (lấy số từ \"Kcal tiêu thụ:\" trong context)',
     "  }",
-    "Lưu ý quan trọng:",
-    "  - nhóm_cơ phải là ARRAY, không phải string.",
-    "  - Nếu trong context có \"Nhóm cơ: A, B, C\" thì nhóm_cơ = [\"A\", \"B\", \"C\"]",
-    "  - Nếu chỉ có 1 nhóm cơ thì nhóm_cơ = [\"Nhóm cơ đó\"]",
-    "  - độ_khó phải là một trong: \"BASIC\", \"MODERATE\", \"ADVANCED\"",
-    "  - kcal_tiêu_thụ phải là số nguyên (integer), không phải string",
-    "Mỗi tuần sẽ tập tối thiểu 3 ngày, tối đa 5 ngày, phân chia đều các ngày và có ngày nghỉ hợp lý.",
+    "Phân chia đều các ngày và có ngày nghỉ hợp lý.",
     "Chỉ trả về các bài tập có trong ngữ cảnh, không tự tạo thêm.",
 ]
 
