@@ -15,6 +15,35 @@ EXERCISE_MD_PATH = BASE_DIR / "data" / "exercise.md"
 MAX_EXERCISES_TO_EMBED = int(os.getenv("EXERCISE_EMBED_LIMIT", "500"))
 
 
+def _detect_risk_tags(exercise_data: Dict[str, Any]) -> List[str]:
+    """
+    Tự động detect risk_tags từ description và name của bài tập.
+    
+    Rules:
+    - Nếu có "core", "bụng", "ab", "abs" trong description/name -> HIGH_PRESSURE_CORE
+    - Nếu có "nâng cao", "advanced", "terror" trong name -> có thể có risk cao
+    """
+    risk_tags = []
+    
+    name = (exercise_data.get("name", "") or "").lower()
+    description = (exercise_data.get("description", "") or "").lower()
+    muscle_group = (exercise_data.get("muscleGroup", "") or "").lower()
+    
+    combined_text = f"{name} {description} {muscle_group}"
+    
+    # Detect HIGH_PRESSURE_CORE
+    core_keywords = ["core", "bụng", "ab", "abs", "abdominal"]
+    if any(keyword in combined_text for keyword in core_keywords):
+        # Chỉ đánh dấu nếu là bài tập ADVANCED hoặc có từ "pressure", "intense"
+        difficulty = (exercise_data.get("difficulty", "") or "").lower()
+        if "advanced" in difficulty or "nâng cao" in difficulty:
+            risk_tags.append("HIGH_PRESSURE_CORE")
+        elif any(word in combined_text for word in ["pressure", "intense", "mạnh", "áp lực"]):
+            risk_tags.append("HIGH_PRESSURE_CORE")
+    
+    return risk_tags
+
+
 class ExercisesParser(TopicParser):
     """Parser cho exercises từ markdown file."""
 
@@ -47,6 +76,7 @@ class ExercisesParser(TopicParser):
                 "calories": "",
                 "description": "",
                 "benefits": "",
+                "risk_tags": [],  # Danh sách risk tags
             }
 
             # Parse từng dòng
@@ -74,6 +104,16 @@ class ExercisesParser(TopicParser):
                     exercise_data["description"] = line.replace("Mô tả:", "").strip()
                 elif line.startswith("Lợi ích:"):
                     exercise_data["benefits"] = line.replace("Lợi ích:", "").strip()
+                elif line.startswith("Risk tags:") or line.startswith("Nhãn rủi ro:"):
+                    # Parse risk tags (có thể là comma-separated)
+                    tags_str = line.replace("Risk tags:", "").replace("Nhãn rủi ro:", "").strip()
+                    if tags_str:
+                        tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
+                        exercise_data["risk_tags"] = tags
+
+            # Tự động detect risk_tags từ description/name nếu chưa có
+            if not exercise_data.get("risk_tags"):
+                exercise_data["risk_tags"] = _detect_risk_tags(exercise_data)
 
             exercises.append(exercise_data)
 
@@ -124,6 +164,10 @@ class ExercisesMetadataBuilder(TopicMetadataBuilder):
 
     def build_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Xây dựng metadata từ exercise data."""
+        # ChromaDB không chấp nhận list trong metadata, cần chuyển thành string
+        risk_tags = item.get("risk_tags", [])
+        risk_tags_str = ",".join(risk_tags) if isinstance(risk_tags, list) and risk_tags else ""
+        
         return {
             "name": item.get("name", ""),
             "muscleGroup": item.get("muscleGroup", ""),
@@ -131,6 +175,7 @@ class ExercisesMetadataBuilder(TopicMetadataBuilder):
             "calories": item.get("calories", ""),
             "description": item.get("description", ""),
             "benefits": item.get("benefits", ""),
+            "risk_tags": risk_tags_str,  # Lưu dưới dạng string (comma-separated)
         }
 
 

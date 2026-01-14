@@ -9,7 +9,9 @@ from typing import Dict, List, Optional, Any
 from rag.exercise_rag import semantic_search, parse_exercises_from_markdown
 from services.llm_service import get_ai_response
 from constants.rag_prompts import get_rag_system_prompt
-from services.conversation_service import get_inbody_data, set_inbody_data
+from services.conversation_service import get_inbody_data
+from services.rule_engine import RuleEngine
+from utils.inbody_normalizer import normalize_inbody_data
 
 MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
 
@@ -19,7 +21,6 @@ BASE_GUIDANCE_LINES = [
     "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
     "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
     "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
-
 ]
 
 
@@ -193,6 +194,24 @@ def get_inbody_data_if_available(session_id: Optional[str] = None) -> Optional[D
     return None
 
 
+# DEPRECATED: Các function này đã được thay thế bởi Rule Engine và InBody Normalizer
+# Chỉ giữ lại để fallback khi Rule Engine lỗi (backward compatibility)
+def _personalize_results_with_inbody(
+    good_results: List[Dict[str, Any]],
+    inbody_data: Optional[Dict[str, Any]],
+    workout_plan: bool,
+) -> List[Dict[str, Any]]:
+    """
+    DEPRECATED: Fallback function khi Rule Engine lỗi.
+    Đã được thay thế bởi Rule Engine - chỉ dùng trong trường hợp exception.
+    """
+    if not inbody_data:
+        return good_results
+    
+    # Fallback đơn giản: chỉ sort theo semantic score
+    return sorted(good_results, key=lambda x: x.get("score", 1.0))
+
+
 def is_exercise_related_query(message: str) -> bool:
     """Phát hiện câu hỏi về bài tập bằng semantic search."""
     try:
@@ -211,11 +230,15 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
     
     Args:
         message: Câu hỏi về bài tập
-        inbody_data: Dữ liệu InBody (không sử dụng, giữ lại để tương thích)
-        session_id: Session ID (không sử dụng, giữ lại để tương thích)
+        inbody_data: Dữ liệu InBody (nếu có) để cá nhân hóa bài tập
+        session_id: Session ID (dùng để lấy InBody data đã lưu nếu cần)
     """
     print(f"[ExerciseService] Generating exercise response for message: {message}")
     
+    # Nếu chưa truyền inbody_data vào, thử lấy từ session
+    if inbody_data is None and session_id:
+        inbody_data = get_inbody_data_if_available(session_id)
+
     # Kiểm tra xem có phải query về lộ trình/chương trình tập không
     workout_plan = is_workout_plan_query(message)
     
@@ -249,12 +272,52 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
             ]
         
         if good_results:
+            # Extract exercises từ semantic results (giữ nguyên để fallback)
+            original_exercises = [item.get("raw") for item in good_results if item.get("raw")]
+            exercises_from_search = original_exercises.copy()
+            
+            # Áp dụng Rule Engine nếu có InBody data
+            if inbody_data and exercises_from_search:
+                try:
+                    # Chuẩn hóa InBody data thành User Signals
+                    user_signals = normalize_inbody_data(inbody_data)
+                    print(f"[ExerciseService] User Signals: {user_signals}")
+                    
+                    # Áp dụng Rule Engine để filter và score bài tập
+                    rule_engine = RuleEngine()
+                    filtered_exercises = rule_engine.filter_exercises(
+                        exercises=exercises_from_search,
+                        user_signals=user_signals,
+                    )
+                    
+                    if filtered_exercises:
+                        print(f"[ExerciseService] Rule Engine filtered {len(exercises_from_search)} -> {len(filtered_exercises)} exercises")
+                        exercises_from_search = filtered_exercises
+                    else:
+                        print(f"[ExerciseService] Rule Engine blocked all exercises, using original results")
+                        # Nếu Rule Engine block hết, vẫn dùng kết quả gốc nhưng cảnh báo
+                        exercises_from_search = original_exercises
+                except Exception as exc:
+                    print(f"[ExerciseService] Rule Engine error: {exc}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fallback: chỉ sort theo semantic score nếu Rule Engine lỗi
+                    good_results = sorted(good_results, key=lambda x: x.get("score", 1.0))
+                    exercises_from_search = [item.get("raw") for item in good_results if item.get("raw")]
+            elif inbody_data is None:
+                # Không có InBody, dùng logic cũ để sort theo semantic score
+                good_results = sorted(
+                    good_results,
+                    key=lambda x: x.get("score", 1.0)
+                )
+                exercises_from_search = [item.get("raw") for item in good_results if item.get("raw")]
+
             # Lấy top exercises (nhiều hơn nếu là lộ trình)
             max_exercises = MAX_CONTEXT_EXERCISES * 2 if workout_plan else MAX_CONTEXT_EXERCISES
-            top_results = good_results[:max_exercises]
-            semantic_exercises = [item.get("raw") for item in top_results if item.get("raw")]
-            if semantic_exercises:
-                contexts = build_context_from_exercises(semantic_exercises)
+            top_exercises = exercises_from_search[:max_exercises]
+            
+            if top_exercises:
+                contexts = build_context_from_exercises(top_exercises)
                 return generate_answer_from_context(message, contexts)
     
     # Fallback: Nếu không có kết quả semantic search, vẫn trả về một số bài tập để tạo lộ trình
@@ -262,6 +325,21 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
         print(f"[ExerciseService] No semantic results for workout plan query, using all exercises as fallback")
         all_exercises = get_all_exercises()
         if all_exercises:
+            # Áp dụng Rule Engine nếu có InBody data
+            if inbody_data:
+                try:
+                    user_signals = normalize_inbody_data(inbody_data)
+                    rule_engine = RuleEngine()
+                    filtered_exercises = rule_engine.filter_exercises(
+                        exercises=all_exercises,
+                        user_signals=user_signals,
+                    )
+                    if filtered_exercises:
+                        all_exercises = filtered_exercises
+                        print(f"[ExerciseService] Rule Engine filtered fallback exercises: {len(filtered_exercises)}")
+                except Exception as exc:
+                    print(f"[ExerciseService] Rule Engine error in fallback: {exc}")
+            
             # Lấy một số bài tập đa dạng
             import random
             selected_exercises = random.sample(all_exercises, min(15, len(all_exercises)))
