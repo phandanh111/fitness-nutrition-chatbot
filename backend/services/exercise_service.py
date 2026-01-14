@@ -13,14 +13,52 @@ from services.conversation_service import get_inbody_data
 from services.rule_engine import RuleEngine
 from utils.inbody_normalizer import normalize_inbody_data
 
-MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
+MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "15"))
 
 # Guidance lines chung cho tất cả responses
 BASE_GUIDANCE_LINES = [
     "QUAN TRỌNG: BẠN PHẢI TUYỆT ĐỐI CHỈ sử dụng thông tin trong các đoạn ngữ cảnh bên trên.",
     "TUYỆT ĐỐI KHÔNG được tự tạo, bịa đặt, hoặc suy đoán thông tin về bài tập, nhóm cơ, thiết bị, hoặc bất kỳ thông tin nào khác.",
     "Nếu ngữ cảnh không chứa thông tin về bài tập được hỏi, bạn PHẢI nói rõ 'Mình chưa tìm thấy thông tin về bài tập này' và KHÔNG được liệt kê các bài tập không có trong ngữ cảnh.",
-    "Câu trả lời chỉ 1 JSON OBJECT duy nhất với các key là ngày trong tuần và value là danh sách các bài tập tương ứng bằng tiếng việt, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
+]
+
+# Guidance cho query thông thường (không phải lộ trình)
+NORMAL_QUERY_GUIDANCE = [
+    "Câu trả lời chỉ là 1 JSON ARRAY duy nhất chứa danh sách các bài tập, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của array.",
+    "Mỗi bài tập trong array phải có format:",
+    "  {",
+    '    "tên_bài_tập": "Tên bài tập (lấy từ \"Bài tập:\" trong context)",',
+    '    "nhóm_cơ": ["Nhóm cơ 1", "Nhóm cơ 2"],',
+    '    "độ_khó": "BASIC|MODERATE|ADVANCED (lấy từ \"Độ khó:\" trong context)",',
+    '    "kcal_tiêu_thụ": số_calo (lấy số từ \"Kcal tiêu thụ:\" trong context)',
+    "  }",
+    "Lưu ý quan trọng:",
+    "  - nhóm_cơ phải là ARRAY, không phải string.",
+    "  - Nếu trong context có \"Nhóm cơ: A, B, C\" thì nhóm_cơ = [\"A\", \"B\", \"C\"]",
+    "  - Nếu chỉ có 1 nhóm cơ thì nhóm_cơ = [\"Nhóm cơ đó\"]",
+    "  - độ_khó phải là một trong: \"BASIC\", \"MODERATE\", \"ADVANCED\"",
+    "  - kcal_tiêu_thụ phải là số nguyên (integer), không phải string",
+    "Chỉ trả về các bài tập có trong ngữ cảnh, không tự tạo thêm.",
+]
+
+# Guidance cho query về lộ trình
+WORKOUT_PLAN_GUIDANCE = [
+    "Câu trả lời chỉ là 1 JSON OBJECT duy nhất với các key là ngày trong tuần (Thứ Hai, Thứ Ba, Thứ Tư, Thứ Năm, Thứ Sáu, Thứ Bảy, Chủ Nhật) và value là danh sách các bài tập tương ứng, không cần thêm bất kỳ note và text nào khác trước và sau dấu đóng mở của object.",
+    "Mỗi bài tập trong danh sách phải có format:",
+    "  {",
+    '    "tên_bài_tập": "Tên bài tập (lấy từ \"Bài tập:\" trong context)",',
+    '    "nhóm_cơ": ["Nhóm cơ 1", "Nhóm cơ 2"],',
+    '    "độ_khó": "BASIC|MODERATE|ADVANCED (lấy từ \"Độ khó:\" trong context)",',
+    '    "kcal_tiêu_thụ": số_calo (lấy số từ \"Kcal tiêu thụ:\" trong context)',
+    "  }",
+    "Lưu ý quan trọng:",
+    "  - nhóm_cơ phải là ARRAY, không phải string.",
+    "  - Nếu trong context có \"Nhóm cơ: A, B, C\" thì nhóm_cơ = [\"A\", \"B\", \"C\"]",
+    "  - Nếu chỉ có 1 nhóm cơ thì nhóm_cơ = [\"Nhóm cơ đó\"]",
+    "  - độ_khó phải là một trong: \"BASIC\", \"MODERATE\", \"ADVANCED\"",
+    "  - kcal_tiêu_thụ phải là số nguyên (integer), không phải string",
+    "Mỗi tuần sẽ tập tối thiểu 3 ngày, tối đa 5 ngày, phân chia đều các ngày và có ngày nghỉ hợp lý.",
+    "Chỉ trả về các bài tập có trong ngữ cảnh, không tự tạo thêm.",
 ]
 
 
@@ -43,11 +81,28 @@ def build_context_from_exercises(exercises: List[Dict]) -> List[str]:
 
         lines = [f"Bài tập: {name}"]
         if muscle_group:
+            # Hiển thị nhóm cơ rõ ràng để LLM dễ parse thành array
+            # Nếu có dấu phẩy, đó là nhiều nhóm cơ
             lines.append(f"Nhóm cơ: {muscle_group}")
         if difficulty:
-            lines.append(f"Độ khó: {difficulty}")
+            # Normalize difficulty để LLM dễ parse
+            difficulty_normalized = difficulty.upper()
+            if "CƠ BẢN" in difficulty_normalized or "BASIC" in difficulty_normalized:
+                difficulty_display = "BASIC"
+            elif "TRUNG BÌNH" in difficulty_normalized or "MODERATE" in difficulty_normalized:
+                difficulty_display = "MODERATE"
+            elif "NÂNG CAO" in difficulty_normalized or "ADVANCED" in difficulty_normalized:
+                difficulty_display = "ADVANCED"
+            else:
+                difficulty_display = difficulty
+            lines.append(f"Độ khó: {difficulty_display}")
         if calories:
-            lines.append(f"Kcal tiêu thụ: {calories}")
+            # Đảm bảo calories là số
+            try:
+                calories_int = int(calories)
+                lines.append(f"Kcal tiêu thụ: {calories_int}")
+            except (ValueError, TypeError):
+                lines.append(f"Kcal tiêu thụ: {calories}")
         
         contexts.append("\n".join(lines))
     return contexts
@@ -62,7 +117,12 @@ def get_all_exercises() -> List[Dict]:
         return []
 
 
-def generate_answer_from_context(question: str, context_blocks: List[str], extra_guidance: Optional[str] = None) -> str:
+def generate_answer_from_context(
+    question: str, 
+    context_blocks: List[str], 
+    workout_plan: bool = False,
+    extra_guidance: Optional[str] = None
+) -> str:
     """Tạo câu trả lời từ context."""
     if not context_blocks:
         return "Xin lỗi, mình chưa tìm thấy thông tin về bài tập này trong dữ liệu hiện có."
@@ -71,6 +131,12 @@ def generate_answer_from_context(question: str, context_blocks: List[str], extra
     
     # Sử dụng guidance lines chung
     guidance_lines = BASE_GUIDANCE_LINES.copy()
+    
+    # Thêm guidance phù hợp với loại query
+    if workout_plan:
+        guidance_lines.extend(WORKOUT_PLAN_GUIDANCE)
+    else:
+        guidance_lines.extend(NORMAL_QUERY_GUIDANCE)
     
     # Thêm guidance đặc biệt nếu có
     if extra_guidance:
@@ -246,7 +312,7 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
     semantic_results: List[Dict] = []
     try:
         # Nếu là query về lộ trình, tăng top_k để có nhiều bài tập đa dạng
-        search_top_k = 20 if workout_plan else 10
+        search_top_k = 20
         semantic_results = semantic_search(message, top_k=search_top_k)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
@@ -318,7 +384,7 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
             
             if top_exercises:
                 contexts = build_context_from_exercises(top_exercises)
-                return generate_answer_from_context(message, contexts)
+                return generate_answer_from_context(message, contexts, workout_plan=workout_plan)
     
     # Fallback: Nếu không có kết quả semantic search, vẫn trả về một số bài tập để tạo lộ trình
     if workout_plan:
@@ -344,7 +410,7 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
             import random
             selected_exercises = random.sample(all_exercises, min(15, len(all_exercises)))
             contexts = build_context_from_exercises(selected_exercises)
-            return generate_answer_from_context(message, contexts)
+            return generate_answer_from_context(message, contexts, workout_plan=workout_plan)
 
     # Nếu không tìm thấy kết quả semantic search phù hợp
     return "Mình chưa tìm thấy thông tin về bài tập bạn đang hỏi. Bạn có thể mô tả cụ thể hơn về bài tập hoặc nhóm cơ bạn muốn tập không?"

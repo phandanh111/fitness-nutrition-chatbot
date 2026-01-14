@@ -109,12 +109,12 @@ def view_vectors(topic: str):
     
     print()
     
-    # Hiển thị chi tiết 5 vectors đầu tiên
+    # Hiển thị chi tiết 50 vectors đầu tiên
     print("=" * 80)
-    print("📈 CHI TIẾT VECTORS (5 đầu tiên):")
+    print("📈 CHI TIẾT VECTORS (50 đầu tiên):")
     print("=" * 80)
     
-    for idx in range(min(5, len(ids))):
+    for idx in range(min(50, len(ids))):
         print(f"\n[{idx + 1}] ID: {ids[idx]}")
         print("-" * 80)
         
