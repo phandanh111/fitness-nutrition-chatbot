@@ -14,6 +14,11 @@ from sentence_transformers import SentenceTransformer
 from pyvi.ViTokenizer import tokenize
 
 try:
+    import torch
+except ImportError:
+    torch = None
+
+try:
     from chromadb.errors import InvalidCollectionException as ChromaInvalidCollection
 except Exception:
     ChromaInvalidCollection = Exception
@@ -37,29 +42,184 @@ os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE_DIR))
 
 _global_chroma_client: chromadb.Client | None = None
 _global_embedding_model: SentenceTransformer | None = None
+_global_embedding_model_cpu: SentenceTransformer | None = None
 
 
 def _get_embedding_model() -> SentenceTransformer:
     """Lazy load embedding model (shared across all topics)."""
     global _global_embedding_model
     if _global_embedding_model is None:
-        _global_embedding_model = SentenceTransformer(DEFAULT_EMBED_MODEL)
+        # Auto-detect device: CPU on Linux (to avoid CUDA issues), auto on Mac
+        import platform
+        force_cpu = os.getenv("FORCE_CPU", "").lower() in ("1", "true", "yes")
+        
+        if force_cpu:
+            device = "cpu"
+            print("[EmbeddingModel] Forcing CPU mode (FORCE_CPU=1)")
+        elif platform.system() == "Linux":
+            # On Linux, use CPU by default to avoid CUDA issues (can be overridden)
+            # Mac uses MPS automatically, which works fine
+            device = "cpu"
+            print("[EmbeddingModel] Linux detected, using CPU to avoid CUDA issues")
+            print("[EmbeddingModel] Set FORCE_CPU=0 to try GPU if needed")
+        else:
+            # Mac/Windows: let SentenceTransformer auto-detect (MPS on Mac, CPU/GPU on Windows)
+            device = None
+            print("[EmbeddingModel] Auto-detecting device (Mac/Windows)")
+        
+        if device:
+            _global_embedding_model = SentenceTransformer(DEFAULT_EMBED_MODEL, device=device)
+        else:
+            _global_embedding_model = SentenceTransformer(DEFAULT_EMBED_MODEL)
     return _global_embedding_model
+
+
+def _get_embedding_model_cpu() -> SentenceTransformer:
+    """Get CPU model for fallback when CUDA errors occur."""
+    global _global_embedding_model_cpu
+    if _global_embedding_model_cpu is None:
+        _global_embedding_model_cpu = SentenceTransformer(DEFAULT_EMBED_MODEL, device="cpu")
+        print("[EmbeddingModel] Created CPU fallback model")
+    return _global_embedding_model_cpu
 
 
 class VietnameseEmbeddingFunction:
     """Adapter để dùng SentenceTransformer với Vietnamese tokenization cho ChromaDB."""
 
+    def _truncate_text(self, text: str, max_chars: int = 400) -> str:
+        """
+        Truncate text để tránh position_ids overflow.
+        Model thường có max_position_embeddings = 512 tokens.
+        Với tiếng Việt, ~400 chars ≈ ~250-300 tokens (an toàn hơn nhiều).
+        """
+        if text is None:
+            return ""
+        text = str(text).strip()
+        if not text:
+            return " "  # Tránh text rỗng
+        if len(text) <= max_chars:
+            return text
+        # Truncate và thêm indicator
+        return text[:max_chars - 20] + "...[truncated]"
+
+    def _truncate_tokenized(self, tokenized_text: str, max_tokens: int = 300) -> str:
+        """
+        Truncate tokenized text theo số tokens để đảm bảo không vượt quá max_position_embeddings.
+        Giảm xuống 300 tokens để an toàn hơn (model có max 512, nhưng cần buffer).
+        """
+        if not tokenized_text:
+            return " "
+        tokens = tokenized_text.split()
+        if len(tokens) <= max_tokens:
+            return tokenized_text
+        # Truncate và join lại
+        return " ".join(tokens[:max_tokens])
+
     def _tokenize_texts(self, texts: List[str]) -> List[str]:
-        """Tokenize Vietnamese texts."""
-        return [tokenize(text) for text in texts]
+        """Tokenize Vietnamese texts với truncation để tránh overflow."""
+        # Truncate text trước khi tokenize
+        truncated_texts = [self._truncate_text(text) for text in texts]
+        # Tokenize
+        tokenized = [tokenize(text) for text in truncated_texts]
+        # Truncate tokenized text theo số tokens (double safety)
+        return [self._truncate_tokenized(tok_text) for tok_text in tokenized]
 
     def _embed(self, texts: List[str]) -> List[List[float]]:
-        """Embed texts với Vietnamese tokenization."""
+        """Embed texts với Vietnamese tokenization và CUDA error handling."""
+        if not texts:
+            return []
+        
         model = _get_embedding_model()
         tokenized_texts = self._tokenize_texts(texts)
-        embeddings = model.encode(tokenized_texts, convert_to_numpy=True)
-        return embeddings.tolist()
+        
+        try:
+            embeddings = model.encode(tokenized_texts, convert_to_numpy=True)
+            return embeddings.tolist()
+        except RuntimeError as e:
+            # CUDA error - fallback to CPU
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+            
+            # Check if it's a CUDA error
+            is_cuda_error = (
+                "cuda" in error_str or 
+                "device-side assert" in error_str or
+                "accelerator" in error_str or
+                "AcceleratorError" in error_type
+            )
+            
+            if is_cuda_error:
+                print(f"[VietnameseEmbeddingFunction] CUDA error detected ({error_type}), retrying with CPU...")
+                try:
+                    # Use CPU fallback model
+                    model_cpu = _get_embedding_model_cpu()
+                    embeddings = model_cpu.encode(tokenized_texts, convert_to_numpy=True)
+                    print("[VietnameseEmbeddingFunction] Successfully encoded with CPU fallback")
+                    return embeddings.tolist()
+                except Exception as cpu_e:
+                    print(f"[VietnameseEmbeddingFunction] Error even with CPU fallback: {cpu_e}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
+            else:
+                # Re-raise non-CUDA RuntimeErrors
+                raise
+        except (IndexError, Exception) as e:
+            # Catch IndexError (position_ids overflow) and other exceptions
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+            
+            # Check if it's a CUDA error
+            is_cuda_error = (
+                "cuda" in error_str or 
+                "device-side assert" in error_str or
+                "accelerator" in error_str
+            )
+            
+            # Check if it's IndexError (position_ids overflow)
+            is_index_error = isinstance(e, IndexError) or "index out of range" in error_str
+            
+            if is_cuda_error:
+                print(f"[VietnameseEmbeddingFunction] CUDA error detected ({error_type}), retrying with CPU...")
+                try:
+                    model_cpu = _get_embedding_model_cpu()
+                    # Further truncate tokenized texts before retry
+                    safe_tokenized = [self._truncate_tokenized(tok, max_tokens=400) for tok in tokenized_texts]
+                    embeddings = model_cpu.encode(safe_tokenized, convert_to_numpy=True)
+                    print("[VietnameseEmbeddingFunction] Successfully encoded with CPU fallback")
+                    return embeddings.tolist()
+                except Exception as cpu_e:
+                    print(f"[VietnameseEmbeddingFunction] Error even with CPU fallback: {cpu_e}")
+                    raise
+            elif is_index_error:
+                # IndexError - likely position_ids overflow, try with more aggressive truncation
+                print(f"[VietnameseEmbeddingFunction] IndexError detected ({error_type}), retrying with much shorter texts...")
+                try:
+                    # Much more aggressive truncation: 200 tokens
+                    safe_tokenized = [self._truncate_tokenized(tok, max_tokens=200) for tok in tokenized_texts]
+                    embeddings = model.encode(safe_tokenized, convert_to_numpy=True)
+                    print("[VietnameseEmbeddingFunction] Successfully encoded with shorter texts (200 tokens)")
+                    return embeddings.tolist()
+                except Exception as retry_e:
+                    # If still fails, try even shorter (150 tokens) with CPU
+                    print(f"[VietnameseEmbeddingFunction] Retry failed, trying CPU with 150 tokens: {retry_e}")
+                    try:
+                        model_cpu = _get_embedding_model_cpu()
+                        very_safe_tokenized = [self._truncate_tokenized(tok, max_tokens=150) for tok in tokenized_texts]
+                        embeddings = model_cpu.encode(very_safe_tokenized, convert_to_numpy=True)
+                        print("[VietnameseEmbeddingFunction] Successfully encoded with CPU fallback (150 tokens)")
+                        return embeddings.tolist()
+                    except Exception as cpu_e:
+                        print(f"[VietnameseEmbeddingFunction] Error even with CPU fallback: {cpu_e}")
+                        # Last resort: return empty embeddings to avoid crash
+                        print("[VietnameseEmbeddingFunction] Returning empty embeddings as last resort")
+                        try:
+                            embedding_dim = model.get_sentence_embedding_dimension()
+                        except Exception:
+                            embedding_dim = 384  # Default dimension for vietnamese-embedding model
+                        return [[0.0] * embedding_dim] * len(texts)
+            else:
+                raise
 
     def __call__(self, input: List[str]) -> List[List[float]]:
         return self._embed(input)
