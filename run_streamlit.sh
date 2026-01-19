@@ -12,7 +12,7 @@ fi
 
 # Kiểm tra model DeepSeek R1
 if ! ollama list | grep -q "deepseek-r1:7b"; then
-    echo "📥 Tải model DeepSeek R1:14b..."
+    echo "📥 Tải model DeepSeek R1:7b..."
     ollama pull deepseek-r1:7b
     if [ $? -ne 0 ]; then
         echo "❌ Lỗi khi tải model. Vui lòng kiểm tra kết nối internet."
