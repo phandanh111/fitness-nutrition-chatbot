@@ -24,6 +24,12 @@ from utils.exercise_helpers import (
     is_full_body_exercise,
     is_lower_body_exercise,
     has_risk_tag,
+    is_burn_exercise,
+    is_hiit_exercise,
+    is_strength_exercise,
+    is_dumbbell_exercise,
+    is_high_impact_exercise,
+    is_too_many_abs_exercise,
 )
 from constants.exercise_constants import (
     RISK_TAG_HIGH_PRESSURE_CORE,
@@ -47,6 +53,16 @@ from constants.exercise_constants import (
     BONUS_OVERWEIGHT_LOWER_BODY,
     BONUS_UNDERWEIGHT_MODERATE,
     BONUS_UNDERWEIGHT_BASIC,
+    BMI_SEVERE_UNDERWEIGHT_THRESHOLD,
+    BODY_FAT_SEVERE_LOW_THRESHOLD,
+    BONUS_MUSCLE_GAIN_STRENGTH,
+    BONUS_MUSCLE_GAIN_BASIC,
+    BONUS_MUSCLE_GAIN_DUMBBELL,
+    BMI_SEVERE_OBESITY_THRESHOLD,
+    BODY_FAT_SEVERE_HIGH_THRESHOLD,
+    BONUS_SEVERE_OBESITY_FULL_BODY,
+    BONUS_SEVERE_OBESITY_BASIC,
+    BONUS_SEVERE_OBESITY_MODERATE,
 )
 
 
@@ -111,6 +127,8 @@ class RuleEngine:
         1. Nếu CENTRAL_FAT = true -> Block exercises with risk_tag = HIGH_PRESSURE_CORE
         2. Nếu BODY_FAT_STATUS = HIGH -> Block difficulty = ADVANCED
         3. Nếu BMI_STATUS = OBESE -> Block difficulty = ADVANCED
+        4. Nếu BMI < 16 hoặc PBF < 8% -> Block BURN/HIIT/HIGH KCAL exercises
+        5. Nếu BMI ≥ 35 hoặc PBF ≥ 40% -> Block HIGH_IMPACT và TOO_MANY_ABS exercises
         """
         safe_exercises = []
 
@@ -138,6 +156,27 @@ class RuleEngine:
                     should_block = True
                     block_reason = "ADVANCED difficulty (obese BMI)"
 
+            # Rule 4: Severe Underweight - Block BURN/HIIT/HIGH KCAL
+            is_severe_underweight = (
+                (user_signals.bmi_value is not None and user_signals.bmi_value < BMI_SEVERE_UNDERWEIGHT_THRESHOLD) or
+                (user_signals.pbf_value is not None and user_signals.pbf_value < BODY_FAT_SEVERE_LOW_THRESHOLD)
+            )
+            if is_severe_underweight:
+                calories = parse_calories(exercise)
+                if is_burn_exercise(exercise) or is_hiit_exercise(exercise) or calories > CALORIE_HIGH_THRESHOLD:
+                    should_block = True
+                    block_reason = "BURN/HIIT/HIGH KCAL not suitable for severe underweight (BMI < 16 or PBF < 8%)"
+
+            # Rule 5: Severe Obesity - Block HIGH_IMPACT và TOO_MANY_ABS
+            is_severe_obesity = (
+                (user_signals.bmi_value is not None and user_signals.bmi_value >= BMI_SEVERE_OBESITY_THRESHOLD) or
+                (user_signals.pbf_value is not None and user_signals.pbf_value >= BODY_FAT_SEVERE_HIGH_THRESHOLD)
+            )
+            if is_severe_obesity:
+                if is_high_impact_exercise(exercise) or is_too_many_abs_exercise(exercise):
+                    should_block = True
+                    block_reason = "HIGH_IMPACT/TOO_MANY_ABS not suitable for severe obesity (BMI ≥ 35 or PBF ≥ 40%)"
+
             if not should_block:
                 safe_exercises.append(exercise)
             else:
@@ -156,7 +195,9 @@ class RuleEngine:
         Rules:
         1. Nếu BODY_FAT_STATUS = HIGH -> Prefer kcal > 200, MODERATE difficulty
         2. Nếu BMI_STATUS = OVERWEIGHT/OBESE -> Prefer MODERATE/BASIC, full body exercises
-        3. Nếu MUSCLE_STATUS = NORMAL -> Không force hypertrophy overload
+        3. Nếu BMI < 16 hoặc PBF < 8% -> Prefer STRENGTH/BASIC/DUMBBELL exercises
+        4. Nếu BMI ≥ 35 hoặc PBF ≥ 40% -> Prefer FULL_BODY/BASIC/MODERATE exercises
+        5. Nếu MUSCLE_STATUS = NORMAL -> Không force hypertrophy overload
         """
         goal_adjusted = []
 
@@ -199,6 +240,38 @@ class RuleEngine:
                     goal_bonus += BONUS_UNDERWEIGHT_MODERATE
                 elif is_difficulty_basic(difficulty):
                     goal_bonus += BONUS_UNDERWEIGHT_BASIC
+
+            # Rule 4: Severe Underweight - Muscle Gain Priority
+            is_severe_underweight = (
+                (user_signals.bmi_value is not None and user_signals.bmi_value < BMI_SEVERE_UNDERWEIGHT_THRESHOLD) or
+                (user_signals.pbf_value is not None and user_signals.pbf_value < BODY_FAT_SEVERE_LOW_THRESHOLD)
+            )
+            if is_severe_underweight:
+                # Ưu tiên STRENGTH exercises
+                if is_strength_exercise(exercise):
+                    goal_bonus += BONUS_MUSCLE_GAIN_STRENGTH
+                # Ưu tiên BASIC difficulty
+                if is_difficulty_basic(difficulty):
+                    goal_bonus += BONUS_MUSCLE_GAIN_BASIC
+                # Ưu tiên DUMBBELL exercises
+                if is_dumbbell_exercise(exercise):
+                    goal_bonus += BONUS_MUSCLE_GAIN_DUMBBELL
+
+            # Rule 5: Severe Obesity - Fat Loss Priority
+            is_severe_obesity = (
+                (user_signals.bmi_value is not None and user_signals.bmi_value >= BMI_SEVERE_OBESITY_THRESHOLD) or
+                (user_signals.pbf_value is not None and user_signals.pbf_value >= BODY_FAT_SEVERE_HIGH_THRESHOLD)
+            )
+            if is_severe_obesity:
+                # Ưu tiên FULL_BODY exercises
+                if is_full_body_exercise(muscle_group):
+                    goal_bonus += BONUS_SEVERE_OBESITY_FULL_BODY
+                # Ưu tiên BASIC difficulty
+                if is_difficulty_basic(difficulty):
+                    goal_bonus += BONUS_SEVERE_OBESITY_BASIC
+                # Ưu tiên MODERATE difficulty
+                if is_difficulty_moderate(difficulty):
+                    goal_bonus += BONUS_SEVERE_OBESITY_MODERATE
 
             adjusted["goal_bonus"] = goal_bonus
             goal_adjusted.append(adjusted)

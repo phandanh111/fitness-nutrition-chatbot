@@ -13,7 +13,7 @@ from services.conversation_service import get_inbody_data
 from services.rule_engine import RuleEngine
 from utils.inbody_normalizer import normalize_inbody_data
 
-MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "10"))
+MAX_CONTEXT_EXERCISES = int(os.getenv("EXERCISE_CONTEXT_LIMIT", "20"))
 
 # Guidance lines chung cho tất cả responses
 BASE_GUIDANCE_LINES = [

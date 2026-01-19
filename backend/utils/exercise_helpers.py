@@ -101,3 +101,74 @@ def has_risk_tag(exercise: Dict[str, Any], risk_tag: str) -> bool:
     """Kiểm tra xem exercise có risk tag cụ thể không."""
     risk_tags = parse_risk_tags(exercise)
     return risk_tag in risk_tags
+
+
+def is_burn_exercise(exercise: Dict[str, Any]) -> bool:
+    """Kiểm tra xem exercise có phải BURN type không."""
+    from constants.exercise_constants import EXERCISE_TYPE_BURN_KEYWORDS
+    
+    name = (exercise.get("name", "") or "").lower()
+    description = (exercise.get("description", "") or "").lower()
+    combined_text = f"{name} {description}"
+    
+    return any(keyword in combined_text for keyword in EXERCISE_TYPE_BURN_KEYWORDS)
+
+
+def is_hiit_exercise(exercise: Dict[str, Any]) -> bool:
+    """Kiểm tra xem exercise có phải HIIT type không."""
+    from constants.exercise_constants import EXERCISE_TYPE_HIIT_KEYWORDS
+    
+    name = (exercise.get("name", "") or "").lower()
+    description = (exercise.get("description", "") or "").lower()
+    combined_text = f"{name} {description}"
+    
+    return any(keyword in combined_text for keyword in EXERCISE_TYPE_HIIT_KEYWORDS)
+
+
+def is_strength_exercise(exercise: Dict[str, Any]) -> bool:
+    """Kiểm tra xem exercise có phải STRENGTH type không."""
+    from constants.exercise_constants import EXERCISE_TYPE_STRENGTH_KEYWORDS
+    
+    name = (exercise.get("name", "") or "").lower()
+    description = (exercise.get("description", "") or "").lower()
+    combined_text = f"{name} {description}"
+    
+    return any(keyword in combined_text for keyword in EXERCISE_TYPE_STRENGTH_KEYWORDS)
+
+
+def is_dumbbell_exercise(exercise: Dict[str, Any]) -> bool:
+    """Kiểm tra xem exercise có phải DUMBBELL type không."""
+    from constants.exercise_constants import EXERCISE_TYPE_DUMBBELL_KEYWORDS
+    
+    name = (exercise.get("name", "") or "").lower()
+    description = (exercise.get("description", "") or "").lower()
+    combined_text = f"{name} {description}"
+    
+    return any(keyword in combined_text for keyword in EXERCISE_TYPE_DUMBBELL_KEYWORDS)
+
+
+def is_high_impact_exercise(exercise: Dict[str, Any]) -> bool:
+    """Kiểm tra xem exercise có phải HIGH_IMPACT type không."""
+    from constants.exercise_constants import EXERCISE_TYPE_HIGH_IMPACT_KEYWORDS
+    
+    name = (exercise.get("name", "") or "").lower()
+    description = (exercise.get("description", "") or "").lower()
+    combined_text = f"{name} {description}"
+    
+    return any(keyword in combined_text for keyword in EXERCISE_TYPE_HIGH_IMPACT_KEYWORDS)
+
+
+def is_too_many_abs_exercise(exercise: Dict[str, Any]) -> bool:
+    """Kiểm tra xem exercise có quá nhiều động tác ABS không."""
+    from constants.exercise_constants import EXERCISE_TYPE_TOO_MANY_ABS_KEYWORDS
+    
+    name = (exercise.get("name", "") or "").lower()
+    description = (exercise.get("description", "") or "").lower()
+    muscle_group = get_muscle_group_normalized(exercise)
+    combined_text = f"{name} {description} {muscle_group}"
+    
+    # Đếm số lần xuất hiện các keywords về abs/core
+    abs_count = sum(1 for keyword in EXERCISE_TYPE_TOO_MANY_ABS_KEYWORDS if keyword in combined_text)
+    
+    # Nếu có nhiều hơn 2 keywords về abs/core hoặc tên bài tập có "abs", "core", "bụng"
+    return abs_count >= 2 or any(keyword in name for keyword in ["abs", "core", "bụng", "abdominal"])

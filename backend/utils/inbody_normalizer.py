@@ -31,11 +31,15 @@ class UserSignals:
         body_fat_status: BodyFatStatus = "UNKNOWN",
         muscle_status: MuscleStatus = "UNKNOWN",
         central_fat: bool = False,
+        bmi_value: Optional[float] = None,
+        pbf_value: Optional[float] = None,
     ):
         self.bmi_status = bmi_status
         self.body_fat_status = body_fat_status
         self.muscle_status = muscle_status
         self.central_fat = central_fat
+        self.bmi_value = bmi_value  # Raw BMI value để check BMI < 16
+        self.pbf_value = pbf_value  # Raw PBF value để check PBF < 8%
 
     def to_dict(self) -> Dict[str, Any]:
         """Chuyển đổi thành dict để dễ debug."""
@@ -44,6 +48,8 @@ class UserSignals:
             "body_fat_status": self.body_fat_status,
             "muscle_status": self.muscle_status,
             "central_fat": self.central_fat,
+            "bmi_value": self.bmi_value,
+            "pbf_value": self.pbf_value,
         }
 
     def __repr__(self) -> str:
@@ -76,11 +82,16 @@ def normalize_inbody_data(inbody_data: Optional[Dict[str, Any]]) -> UserSignals:
     # Kiểm tra Central Fat (mỡ bụng)
     central_fat = _detect_central_fat(inbody_data)
 
+    # Lấy raw PBF value
+    pbf_value = _get_pbf_value(inbody_data)
+
     return UserSignals(
         bmi_status=bmi_status,
         body_fat_status=body_fat_status,
         muscle_status=muscle_status,
         central_fat=central_fat,
+        bmi_value=bmi,
+        pbf_value=pbf_value,
     )
 
 
@@ -200,6 +211,18 @@ def _classify_muscle_status(inbody_data: Dict[str, Any]) -> MuscleStatus:
             return "NORMAL"  # Mặc định
     except Exception:
         return "UNKNOWN"
+
+
+def _get_pbf_value(inbody_data: Dict[str, Any]) -> Optional[float]:
+    """Lấy raw PBF (Percent Body Fat) value từ inbody_data."""
+    try:
+        obesity = inbody_data.get("obesity", {}) or {}
+        pbf_str = obesity.get("pbf")
+        if pbf_str is None:
+            return None
+        return float(pbf_str)
+    except Exception:
+        return None
 
 
 def _detect_central_fat(inbody_data: Dict[str, Any]) -> bool:
