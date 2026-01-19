@@ -44,7 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Chỉ sử dụng Ollama với deepseek-r1:14b
+# Chỉ sử dụng Ollama với deepseek-r1:7b
 
 # Load system prompt
 def load_system_prompt():

@@ -11,7 +11,7 @@ class OllamaClient:
     def __init__(self, base_url: str = None, model: str = None):
         # Đọc từ environment variables nếu không được truyền vào
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.model = model or os.getenv("OLLAMA_MODEL", "deepseek-r1:14b")
+        self.model = model or os.getenv("OLLAMA_MODEL", "deepseek-r1:7b")
         self.api_url = f"{self.base_url}/api/chat"
     
     def set_model(self, model: str) -> None:

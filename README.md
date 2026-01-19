@@ -168,7 +168,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ### 3. Tải model DeepSeek R1
 
 ```bash
-ollama pull deepseek-r1:14b
+ollama pull deepseek-r1:7b
 ```
 
 ### 4. Khởi động Ollama
@@ -254,7 +254,7 @@ Bài tập nào tốt cho tôi?
 ```bash
 # Ollama Configuration
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=deepseek-r1:14b
+OLLAMA_MODEL=deepseek-r1:7b
 OLLAMA_TIMEOUT=120
 OLLAMA_MAX_TOKENS=2000
 
@@ -551,7 +551,7 @@ ollama list
 ollama serve
 
 # Kiểm tra model
-ollama pull deepseek-r1:14b
+ollama pull deepseek-r1:7b
 ```
 
 ### RAG Index chưa được build
