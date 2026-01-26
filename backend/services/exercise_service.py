@@ -210,6 +210,12 @@ def parse_inbody_from_message(message: str) -> Optional[Dict[str, Any]]:
                     inbody_data["muscle_fat"]["fat_mass"] = str(fat_mass)
                     inbody_data["composition"]["fat"] = str(fat_mass)
             
+            # Parse SMM (Skeletal Muscle Mass)
+            smm_match = re.search(r'(?:smm|muscle|cơ)[:\s]*(\d+(?:\.\d+)?)', message, re.IGNORECASE)
+            if smm_match:
+                smm = float(smm_match.group(1))
+                inbody_data["muscle_fat"]["smm"] = str(smm)
+            
             if age_match:
                 inbody_data["inbody_info"]["age"] = age_match.group(1)
             
@@ -299,9 +305,9 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
     # Semantic search đơn giản
     semantic_results: List[Dict] = []
     try:
-        # Nếu là query về lộ trình, tăng top_k để có nhiều bài tập đa dạng
-        search_top_k = 20
-        semantic_results = semantic_search(message, top_k=search_top_k)
+            # Lấy nhiều kết quả hơn để lọc (Top-K = 50)
+            search_top_k = 50
+            semantic_results = semantic_search(message, top_k=search_top_k)
     except Exception as exc:
         print(f"[ExerciseService] semantic_search failed: {exc}")
         import traceback
@@ -348,16 +354,19 @@ def generate_exercise_response(message: str, inbody_data: Optional[Dict[str, Any
                         print(f"[ExerciseService] Rule Engine filtered {len(exercises_from_search)} -> {len(filtered_exercises)} exercises")
                         exercises_from_search = filtered_exercises
                     else:
-                        print(f"[ExerciseService] Rule Engine blocked all exercises, using original results")
-                        # Nếu Rule Engine block hết, vẫn dùng kết quả gốc nhưng cảnh báo
-                        exercises_from_search = original_exercises
+                        print(f"[ExerciseService] Rule Engine blocked ALL exercises. Returning safety message.")
+                        # CRITICAL FIX: Nếu Rule Engine block hết, KHÔNG fallback về original.
+                        # Trả về thông báo an toàn.
+                        return "Dựa trên các chỉ số InBody và tình trạng sức khỏe của bạn (ví dụ: mỡ thừa cao hoặc nguy cơ chấn thương), mình chưa tìm thấy bài tập nào trong cơ sở dữ liệu đảm bảo an toàn tuyệt đối. Bạn vui lòng tham khảo ý kiến bác sĩ hoặc HLV chuyên nghiệp để có lộ trình phù hợp hơn nhé."
                 except Exception as exc:
                     print(f"[ExerciseService] Rule Engine error: {exc}")
                     import traceback
                     traceback.print_exc()
-                    # Fallback: chỉ sort theo semantic score nếu Rule Engine lỗi
+                    # Nếu Rule Engine lỗi code, fallback an toàn là trả về lỗi hoặc list rỗng, 
+                    # ở đây ta tạm thời dùng sort đơn giản nhưng log error
                     good_results = sorted(good_results, key=lambda x: x.get("score", 1.0))
                     exercises_from_search = [item.get("raw") for item in good_results if item.get("raw")]
+
             elif inbody_data is None:
                 # Không có InBody, dùng logic cũ để sort theo semantic score
                 good_results = sorted(

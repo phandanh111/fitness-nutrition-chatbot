@@ -33,6 +33,8 @@ class UserSignals:
         central_fat: bool = False,
         bmi_value: Optional[float] = None,
         pbf_value: Optional[float] = None,
+        smm_value: Optional[float] = None,
+        ffm_value: Optional[float] = None,
     ):
         self.bmi_status = bmi_status
         self.body_fat_status = body_fat_status
@@ -40,6 +42,8 @@ class UserSignals:
         self.central_fat = central_fat
         self.bmi_value = bmi_value  # Raw BMI value để check BMI < 16
         self.pbf_value = pbf_value  # Raw PBF value để check PBF < 8%
+        self.smm_value = smm_value
+        self.ffm_value = ffm_value
 
     def to_dict(self) -> Dict[str, Any]:
         """Chuyển đổi thành dict để dễ debug."""
@@ -50,6 +54,8 @@ class UserSignals:
             "central_fat": self.central_fat,
             "bmi_value": self.bmi_value,
             "pbf_value": self.pbf_value,
+            "smm_value": self.smm_value,
+            "ffm_value": self.ffm_value,
         }
 
     def __repr__(self) -> str:
@@ -76,14 +82,16 @@ def normalize_inbody_data(inbody_data: Optional[Dict[str, Any]]) -> UserSignals:
     # Phân loại Body Fat Status
     body_fat_status = _classify_body_fat_status(inbody_data)
 
-    # Phân loại Muscle Status
-    muscle_status = _classify_muscle_status(inbody_data)
+    # Lấy các giá trị raw
+    pbf_value = _get_pbf_value(inbody_data)
+    smm_value = _get_smm_value(inbody_data)
+    ffm_value = _get_ffm_value(inbody_data)
+
+    # Phân loại Muscle Status (cập nhật dùng SMM/FFM)
+    muscle_status = _classify_muscle_status(inbody_data, smm_value, ffm_value)
 
     # Kiểm tra Central Fat (mỡ bụng)
     central_fat = _detect_central_fat(inbody_data)
-
-    # Lấy raw PBF value
-    pbf_value = _get_pbf_value(inbody_data)
 
     return UserSignals(
         bmi_status=bmi_status,
@@ -92,6 +100,8 @@ def normalize_inbody_data(inbody_data: Optional[Dict[str, Any]]) -> UserSignals:
         central_fat=central_fat,
         bmi_value=bmi,
         pbf_value=pbf_value,
+        smm_value=smm_value,
+        ffm_value=ffm_value,
     )
 
 
@@ -187,15 +197,47 @@ def _classify_body_fat_status(inbody_data: Dict[str, Any]) -> BodyFatStatus:
         return "UNKNOWN"
 
 
-def _classify_muscle_status(inbody_data: Dict[str, Any]) -> MuscleStatus:
+def _classify_muscle_status(
+    inbody_data: Dict[str, Any], 
+    smm_value: Optional[float] = None, 
+    ffm_value: Optional[float] = None
+) -> MuscleStatus:
     """
-    Phân loại Muscle Status dựa trên SMM (Skeletal Muscle Mass).
+    Phân loại Muscle Status dựa trên SMM (Skeletal Muscle Mass) hoặc heuristic.
     
-    Tạm thời dùng heuristic đơn giản:
-    - Nếu có BMI và BMI cao nhưng body fat không cao -> muscle tốt
-    - Nếu BMI thấp và body fat thấp -> muscle thấp
+    Logic mới:
+    1. Nếu có SMM:
+       - Nam: SMM > 40% weight -> HIGH, < 30% -> LOW
+       - Nữ: SMM > 35% weight -> HIGH, < 25% -> LOW
+    2. Nếu không có SMM, dùng BMI Heuristic cũ.
     """
     try:
+        composition = inbody_data.get("composition", {}) or {}
+        weight_str = composition.get("weight")
+        
+        # Nếu có SMM và Weight -> dùng tỷ lệ SMM/Weight
+        if smm_value is not None and weight_str is not None:
+            weight = float(weight_str)
+            if weight > 0:
+                smm_ratio = smm_value / weight
+                inbody_info = inbody_data.get("inbody_info", {}) or {}
+                gender = (inbody_info.get("gender") or "").lower()
+                
+                # Ngưỡng SMM tham khảo (ước lượng)
+                if gender in ["male", "nam"]:
+                    if smm_ratio > 0.40: return "HIGH"
+                    if smm_ratio < 0.30: return "LOW"
+                elif gender in ["female", "nữ"]:
+                    if smm_ratio > 0.35: return "HIGH"
+                    if smm_ratio < 0.25: return "LOW"
+                else: 
+                     # Unknown gender
+                    if smm_ratio > 0.38: return "HIGH"
+                    if smm_ratio < 0.28: return "LOW"
+                
+                return "NORMAL"
+
+        # Fallback: Dùng Heuristic cũ
         bmi = _compute_bmi_from_inbody(inbody_data)
         body_fat_status = _classify_body_fat_status(inbody_data)
 
@@ -211,6 +253,28 @@ def _classify_muscle_status(inbody_data: Dict[str, Any]) -> MuscleStatus:
             return "NORMAL"  # Mặc định
     except Exception:
         return "UNKNOWN"
+
+def _get_smm_value(inbody_data: Dict[str, Any]) -> Optional[float]:
+    """Lấy SMM (Skeletal Muscle Mass) từ inbody_data."""
+    try:
+        muscle_fat = inbody_data.get("muscle_fat", {}) or {}
+        smm = muscle_fat.get("smm")
+        if smm:
+            return float(smm)
+    except Exception:
+        pass
+    return None
+
+def _get_ffm_value(inbody_data: Dict[str, Any]) -> Optional[float]:
+    """Lấy FFM (Fat Free Mass) từ inbody_data."""
+    try:
+        composition = inbody_data.get("composition", {}) or {}
+        ffm = composition.get("ffm") # Some formats might use different keys
+        if ffm:
+            return float(ffm)
+    except Exception:
+        pass
+    return None
 
 
 def _get_pbf_value(inbody_data: Dict[str, Any]) -> Optional[float]:

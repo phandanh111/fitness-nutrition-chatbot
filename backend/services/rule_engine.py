@@ -63,6 +63,8 @@ from constants.exercise_constants import (
     BONUS_SEVERE_OBESITY_FULL_BODY,
     BONUS_SEVERE_OBESITY_BASIC,
     BONUS_SEVERE_OBESITY_MODERATE,
+    WEIGHT_ADJUSTMENT_FAT_LOSS,
+    WEIGHT_ADJUSTMENT_MUSCLE_GAIN,
 )
 
 
@@ -295,9 +297,18 @@ class RuleEngine:
           * kcal > 250: +2
           * kcal < 150: -1
           * risk_tag = PRESSURE_HIGH: -3
-        - Cộng goal_bonus từ Layer 2
+        - Cộng goal_bonus từ Layer 2 (có áp dụng Weight Multipliers)
         """
         scored_exercises = []
+
+        is_fat_loss_priority = (
+            user_signals.body_fat_status == "HIGH" or 
+            user_signals.bmi_status == "OBESE"
+        )
+        is_muscle_gain_priority = (
+            user_signals.bmi_status == "UNDERWEIGHT" or 
+            (user_signals.smm_value is not None and user_signals.muscle_status == "LOW")
+        )
 
         for exercise in exercises:
             score = 0.0
@@ -306,18 +317,28 @@ class RuleEngine:
             calories = parse_calories(exercise)
 
             # Scoring theo difficulty
+            diff_score = 0.0
             if is_difficulty_moderate(difficulty):
-                score += SCORE_DIFFICULTY_MODERATE
+                diff_score = SCORE_DIFFICULTY_MODERATE
             elif is_difficulty_basic(difficulty):
-                score += SCORE_DIFFICULTY_BASIC
+                diff_score = SCORE_DIFFICULTY_BASIC
             elif is_difficulty_advanced(difficulty):
-                score += SCORE_DIFFICULTY_ADVANCED
+                diff_score = SCORE_DIFFICULTY_ADVANCED
+            
+            score += diff_score
 
             # Scoring theo calories
+            cal_score = 0.0
             if calories > CALORIE_HIGH_THRESHOLD:
-                score += SCORE_CALORIE_HIGH
+                cal_score = SCORE_CALORIE_HIGH
             elif calories < CALORIE_LOW_THRESHOLD:
-                score += SCORE_CALORIE_LOW
+                cal_score = SCORE_CALORIE_LOW
+            
+            # IMPROVEMENT: Apply Weight Multiplier for Calories if Fat Loss is priority
+            if is_fat_loss_priority:
+                cal_score *= WEIGHT_ADJUSTMENT_FAT_LOSS
+            
+            score += cal_score
 
             # Scoring theo risk_tags
             if has_risk_tag(exercise, RISK_TAG_HIGH_PRESSURE_CORE) or has_risk_tag(exercise, RISK_TAG_PRESSURE_HIGH):
@@ -325,6 +346,11 @@ class RuleEngine:
 
             # Cộng goal_bonus từ Layer 2
             goal_bonus = exercise.get("goal_bonus", 0.0)
+            
+            # IMPROVEMENT: Apply Weight Multiplier for Bonus if Muscle Gain priority
+            if is_muscle_gain_priority and goal_bonus > 0:
+                goal_bonus *= WEIGHT_ADJUSTMENT_MUSCLE_GAIN
+
             score += goal_bonus
 
             # Lưu score vào exercise

@@ -98,13 +98,18 @@ BONUS_UNDERWEIGHT_BASIC = 1.0
 
 # Muscle gain bonuses (BMI < 16 hoặc PBF < 8%)
 BONUS_MUSCLE_GAIN_STRENGTH = 4.0  # Ưu tiên strength training
-BONUS_MUSCLE_GAIN_BASIC = 3.0  # Ưu tiên basic difficulty
+BONUS_MUSCLE_GAIN_BASIC = 2.0  # Adjusted from 3.0 based on user feedback (Users want harder exercises)
 BONUS_MUSCLE_GAIN_DUMBBELL = 2.0  # Ưu tiên dumbbell exercises
 
 # Severe obesity bonuses (BMI ≥ 35 hoặc PBF ≥ 40%)
 BONUS_SEVERE_OBESITY_FULL_BODY = 4.0  # Ưu tiên full body exercises
 BONUS_SEVERE_OBESITY_BASIC = 3.0  # Ưu tiên basic difficulty
 BONUS_SEVERE_OBESITY_MODERATE = 2.0  # Ưu tiên moderate difficulty
+
+# Weight multipliers for scoring (New improvement)
+WEIGHT_ADJUSTMENT_FAT_LOSS = 1.5  # Nhân 1.5 cho các tiêu chí giảm mỡ
+WEIGHT_ADJUSTMENT_MUSCLE_GAIN = 1.2  # Nhân 1.2 cho các tiêu chí tăng cơ
+
 
 # ============================================================================
 # MUSCLE GROUP KEYWORDS
