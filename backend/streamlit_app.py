@@ -36,7 +36,7 @@ def load_system_prompt():
         with open("prompt_system.txt", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về thông tin chi nhánh và các câu hỏi khác về The New Gym."
+        return "Bạn là AI Assistant của The New Gym. Hỗ trợ khách hàng về bài tập và các câu hỏi khác về The New Gym."
 
 # Page configuration
 st.set_page_config(
@@ -95,7 +95,7 @@ with st.sidebar:
         # Reset welcome message
         welcome_msg = {
             "role": "assistant",
-            "content": "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Thông tin về các chi nhánh/clubs\n• Tư vấn dinh dưỡng và thể hình\n• Câu hỏi về dịch vụ của The New Gym\n• Tư vấn về chương trình tập luyện\n\nBạn cần hỗ trợ gì hôm nay?"
+            "content": "Xin chào! Tôi là AI Assistant của The New Gym.\n\nTôi có thể hỗ trợ bạn:\n• Tư vấn về bài tập và chương trình tập luyện\n• Câu hỏi về dịch vụ của The New Gym\n• Gợi ý bài tập phù hợp với thể trạng của bạn\n\nBạn cần hỗ trợ gì hôm nay?"
         }
         st.session_state.messages = [welcome_msg]
         st.rerun()
@@ -150,9 +150,71 @@ chat_container = st.container()
 
 # Display chat messages
 with chat_container:
-    for message in st.session_state.messages:
+    for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            
+            # Show feedback buttons for assistant messages
+            if message["role"] == "assistant":
+                # Ensure message has an ID
+                if "id" not in message:
+                    message["id"] = f"msg_{idx}_{hash(message['content'])}"
+                
+                msg_id = message["id"]
+                
+                # Check if feedback already given
+                feedback_state_key = f"feedback_{msg_id}"
+                if feedback_state_key not in st.session_state:
+                    st.session_state[feedback_state_key] = None
+                
+                current_feedback = st.session_state[feedback_state_key]
+                
+                if current_feedback:
+                    st.caption(f"Đã đánh giá: {'👍' if current_feedback == 'like' else '👎'}")
+                else:
+                    fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 15])
+                    with fb_col1:
+                        if st.button("👍", key=f"like_{msg_id}", help="Hữu ích"):
+                            from services.feedback_service import save_feedback
+                            
+                            # Get user query from previous message if available
+                            user_query = ""
+                            if idx > 0 and st.session_state.messages[idx-1]["role"] == "user":
+                                user_query = st.session_state.messages[idx-1]["content"]
+                                
+                            # Get inbody context if stored in message or session
+                            inbody_ctx = message.get("inbody_context") or get_inbody_data(st.session_state.session_id)
+                            
+                            save_feedback(
+                                message_id=msg_id,
+                                user_query=user_query,
+                                bot_response=message["content"],
+                                feedback_type="like",
+                                inbody_data=inbody_ctx
+                            )
+                            st.session_state[feedback_state_key] = "like"
+                            st.rerun()
+                            
+                    with fb_col2:
+                        if st.button("👎", key=f"dislike_{msg_id}", help="Không hữu ích"):
+                            from services.feedback_service import save_feedback
+                            
+                            # Get user query from previous message
+                            user_query = ""
+                            if idx > 0 and st.session_state.messages[idx-1]["role"] == "user":
+                                user_query = st.session_state.messages[idx-1]["content"]
+                            
+                            inbody_ctx = message.get("inbody_context") or get_inbody_data(st.session_state.session_id)
+
+                            save_feedback(
+                                message_id=msg_id,
+                                user_query=user_query,
+                                bot_response=message["content"],
+                                feedback_type="dislike",
+                                inbody_data=inbody_ctx
+                            )
+                            st.session_state[feedback_state_key] = "dislike"
+                            st.rerun()
 
 # Chat input
 if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
@@ -254,8 +316,24 @@ if prompt := st.chat_input("Nhập tin nhắn của bạn..."):
                 # Display response
                 if response_text:
                     st.markdown(response_text)
-                    assistant_message = {"role": "assistant", "content": response_text}
+                    
+                    # Generate ID for new message
+                    new_msg_id = f"msg_{int(time.time())}"
+                    
+                    # Get current inbody data context
+                    current_inbody = get_inbody_data(session_id)
+                    
+                    assistant_message = {
+                        "role": "assistant", 
+                        "content": response_text,
+                        "id": new_msg_id,
+                        "inbody_context": current_inbody
+                    }
                     st.session_state.messages.append(assistant_message)
+                    
+                    # Force rerun to show buttons in main loop
+                    st.rerun()
+
                     
                     # Log successful response
                     elapsed_time = time.time() - start_time

@@ -15,7 +15,7 @@ def get_rag_system_prompt(context_type: str = "general") -> str:
     Lấy RAG system prompt với context type cụ thể.
     
     Args:
-        context_type: Loại context ("clubs", "exercises", "terms", "prices", hoặc "general")
+        context_type: Loại context ("exercises" hoặc "general")
     
     Returns:
         System prompt phù hợp với context type

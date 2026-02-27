@@ -1,8 +1,7 @@
 """
 Script để xem vectors đã lưu trong ChromaDB bằng ChromaDB client.
     
-Mặc định hiển thị collection `clubs`. Có thể xem thêm `exercises`, `terms`,
-hoặc `inbody` qua tham số `--topic`.
+Mặc định hiển thị collection `exercises`.
 """
 
 import sys
@@ -23,10 +22,7 @@ from rag.base_rag import CHROMA_DIR, VietnameseEmbeddingFunction, _get_global_cl
 
 # Map topic -> collection name
 TOPIC_CONFIG = {
-    "clubs": "club_documents",
     "exercises": "exercise_documents",
-    "terms": "terms_documents",
-    "inbody": "inbody_documents",
 }
 
 
@@ -113,12 +109,12 @@ def view_vectors(topic: str):
     
     print()
     
-    # Hiển thị chi tiết 5 vectors đầu tiên
+    # Hiển thị chi tiết 50 vectors đầu tiên
     print("=" * 80)
-    print("📈 CHI TIẾT VECTORS (5 đầu tiên):")
+    print("📈 CHI TIẾT VECTORS (50 đầu tiên):")
     print("=" * 80)
     
-    for idx in range(min(5, len(ids))):
+    for idx in range(min(50, len(ids))):
         print(f"\n[{idx + 1}] ID: {ids[idx]}")
         print("-" * 80)
         
@@ -171,27 +167,16 @@ def view_vectors(topic: str):
     print("=" * 80)
     print(f"Tổng số vectors: {len(ids)}")
     
-    # Đếm theo city (hữu ích cho clubs, giữ lại cho compat)
+    # Thống kê metadata khác (nếu có)
     if metadatas:
-        cities = {}
-        for meta in metadatas:
-            if meta and meta.get("city"):
-                city = meta["city"]
-                cities[city] = cities.get(city, 0) + 1
-        
-        if cities:
-            print(f"\n📍 Phân bố theo thành phố:")
-            for city, count in sorted(cities.items(), key=lambda x: x[1], reverse=True):
-                print(f"   {city}: {count} clubs")
+        # Có thể thêm thống kê khác nếu cần
+        pass
     
     print("\n" + "=" * 80)
     print("💡 HƯỚNG DẪN:")
     print("-" * 80)
-    print("Để xem tất cả vectors, chạy (mặc định clubs):")
-    print("  python backend/scripts/view_vectors.py --topic clubs")
+    print("Để xem tất cả vectors, chạy:")
     print("  python backend/scripts/view_vectors.py --topic exercises")
-    print("  python backend/scripts/view_vectors.py --topic terms")
-    print("  python backend/scripts/view_vectors.py --topic inbody")
     print()
     print("Để test query vectors, chạy:")
     print("  python backend/scripts/test_embeddings_simple.py")
@@ -205,8 +190,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--topic",
         choices=list(TOPIC_CONFIG.keys()),
-        default="clubs",
-        help="Topic muốn xem (clubs/exercises/terms). Mặc định: clubs",
+        default="exercises",
+        help="Topic muốn xem. Mặc định: exercises",
     )
     args = parser.parse_args()
     view_vectors(topic=args.topic)

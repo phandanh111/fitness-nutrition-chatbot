@@ -5,7 +5,7 @@ from utils.ollama_client import ollama_client
 
 
 def get_ai_response(messages: List[Dict], system_prompt: str) -> str:
-    """Chỉ sử dụng Ollama với deepseek-r1:14b"""
+    """Chỉ sử dụng Ollama với deepseek-r1:7b"""
     try:
         if not ollama_client.is_available():
             return "Xin lỗi, Ollama service chưa sẵn sàng. Vui lòng chạy 'ollama serve' trước."

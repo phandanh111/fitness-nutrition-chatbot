@@ -25,7 +25,7 @@ def register_topic(
     Đăng ký một topic mới vào RAG system.
 
     Args:
-        topic_name: Tên topic (ví dụ: "clubs", "exercises")
+        topic_name: Tên topic (ví dụ: "exercises")
         collection_name: Tên collection trong ChromaDB
         parser: Parser để parse dữ liệu
         text_builder: Builder để xây dựng text
@@ -59,7 +59,7 @@ def semantic_search(topic_name: str, query: str, top_k: int = 5) -> list:
     Semantic search cho một topic cụ thể.
 
     Args:
-        topic_name: Tên topic (ví dụ: "clubs", "exercises")
+        topic_name: Tên topic (ví dụ: "exercises")
         query: Query string
         top_k: Số lượng kết quả
 

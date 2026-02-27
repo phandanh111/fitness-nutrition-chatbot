@@ -11,9 +11,9 @@ if ! command -v ollama &> /dev/null; then
 fi
 
 # Kiểm tra model DeepSeek R1
-if ! ollama list | grep -q "deepseek-r1:14b"; then
-    echo "📥 Tải model DeepSeek R1:14b..."
-    ollama pull deepseek-r1:14b
+if ! ollama list | grep -q "deepseek-r1:7b"; then
+    echo "📥 Tải model DeepSeek R1:7b..."
+    ollama pull deepseek-r1:7b
     if [ $? -ne 0 ]; then
         echo "❌ Lỗi khi tải model. Vui lòng kiểm tra kết nối internet."
         exit 1
@@ -87,10 +87,10 @@ fi
 
 if [ "$NEED_FORCE_REBUILD" = "true" ]; then
     echo "   → Rebuild toàn bộ RAG index..."
-    $VENV_PYTHON scripts/build_club_index.py --force
+    $VENV_PYTHON scripts/build_exercise_index.py --force
 else
     echo "   → Cập nhật RAG index hiện có..."
-    $VENV_PYTHON scripts/build_club_index.py
+    $VENV_PYTHON scripts/build_exercise_index.py
 fi
 
 if [ $? -ne 0 ]; then

@@ -12,7 +12,7 @@ DB_PATH = PROJECT_ROOT / "data" / "rag" / "chroma" / "chroma.sqlite3"
 
 if not DB_PATH.exists():
     print(f"❌ Database không tồn tại: {DB_PATH}")
-    print("💡 Hãy chạy: python backend/scripts/build_club_index.py để build index trước")
+    print("💡 Hãy chạy: python backend/scripts/build_exercise_index.py để build index trước")
     exit(1)
 
 conn = sqlite3.connect(DB_PATH)

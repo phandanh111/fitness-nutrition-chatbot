@@ -17,9 +17,9 @@ if ! command -v ollama &> /dev/null; then
 fi
 
 # Kiểm tra model DeepSeek R1
-if ! ollama list | grep -q "deepseek-r1:14b"; then
-    echo "📥 Tải model DeepSeek R1:14b..."
-    ollama pull deepseek-r1:14b
+if ! ollama list | grep -q "deepseek-r1:7b"; then
+    echo "📥 Tải model DeepSeek R1:7b..."
+    ollama pull deepseek-r1:7b
     if [ $? -ne 0 ]; then
         echo "❌ Lỗi khi tải model. Vui lòng kiểm tra kết nối internet."
         exit 1
